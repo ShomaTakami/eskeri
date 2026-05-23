@@ -26,7 +26,7 @@ import {
 type TimerRouteProp = RouteProp<StartStackParamList, 'TimerScreen'>;
 type NavigationProp = NativeStackNavigationProp<StartStackParamList, 'TimerScreen'>;
 
-type Phase = 'running' | 'checkpoint' | 'feeling';
+type Phase = 'running' | 'startCheckpoint' | 'checkpoint' | 'feeling';
 
 export function TimerScreen() {
   const navigation = useNavigation<NavigationProp>();
@@ -44,22 +44,31 @@ export function TimerScreen() {
   const progress =
     totalSeconds > 0 ? remainingSeconds / totalSeconds : 0;
 
-  const goToCheckpoint = useCallback(
-    (naturalExpiry = false) => {
-      void cancelTimerNotification();
-      setRemainingSeconds(0);
-      if (
-        naturalExpiry &&
-        !onExtensionRef.current &&
-        !momentumAwardedRef.current
-      ) {
-        momentumAwardedRef.current = true;
-        void awardMomentum(heavinessBefore);
-      }
-      setPhase('checkpoint');
-    },
-    [awardMomentum, heavinessBefore],
-  );
+  const goToCheckpoint = useCallback((naturalExpiry = false) => {
+    void cancelTimerNotification();
+    setRemainingSeconds(0);
+    if (!naturalExpiry) {
+      setPhase('feeling');
+      return;
+    }
+    if (!onExtensionRef.current) {
+      setPhase('startCheckpoint');
+      return;
+    }
+    setPhase('checkpoint');
+  }, []);
+
+  const handleEngaged = useCallback(() => {
+    if (!momentumAwardedRef.current) {
+      momentumAwardedRef.current = true;
+      void awardMomentum(heavinessBefore);
+    }
+    setPhase('checkpoint');
+  }, [awardMomentum, heavinessBefore]);
+
+  const handleStartCheckpointEnd = useCallback(() => {
+    setPhase('feeling');
+  }, []);
 
   const startExtension = useCallback((minutes: ExtensionMinutes) => {
     onExtensionRef.current = true;
@@ -152,11 +161,17 @@ export function TimerScreen() {
       <View style={styles.container}>
         <Text style={styles.actionTitle}>{title}</Text>
 
-        <CircularProgress progress={phase === 'checkpoint' ? 0 : progress}>
-          {phase === 'checkpoint' ? (
-            <Text style={styles.checkpointLabel}>完了</Text>
-          ) : (
+        <CircularProgress
+          progress={
+            phase === 'running' ? progress : 0
+          }
+        >
+          {phase === 'running' ? (
             <Text style={styles.timer}>{formatTimer(remainingSeconds)}</Text>
+          ) : phase === 'startCheckpoint' ? (
+            <Text style={styles.checkpointLabel}>終了</Text>
+          ) : (
+            <Text style={styles.checkpointLabel}>完了</Text>
           )}
         </CircularProgress>
 
@@ -171,7 +186,36 @@ export function TimerScreen() {
           >
             <Text style={styles.endLabel}>終わる</Text>
           </Pressable>
-        ) : (
+        ) : null}
+
+        {phase === 'startCheckpoint' ? (
+          <View style={styles.startCheckpointActions}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.endButton,
+                { backgroundColor: ACCENT },
+                pressed && styles.pressed,
+              ]}
+              onPress={handleEngaged}
+            >
+              <Text style={styles.endLabel}>取り組めた</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                { borderColor: ACCENT },
+                pressed && styles.pressed,
+              ]}
+              onPress={handleStartCheckpointEnd}
+            >
+              <Text style={[styles.secondaryLabel, { color: ACCENT }]}>
+                終わる
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {phase === 'checkpoint' ? (
           <View style={styles.checkpointActions}>
             <Pressable
               style={({ pressed }) => [
@@ -201,7 +245,7 @@ export function TimerScreen() {
               ))}
             </View>
           </View>
-        )}
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -256,6 +300,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#ffffff',
+  },
+  startCheckpointActions: {
+    width: '100%',
+    marginTop: 40,
+    gap: 12,
+  },
+  secondaryButton: {
+    width: '100%',
+    paddingVertical: 16,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+  },
+  secondaryLabel: {
+    fontSize: 16,
+    fontWeight: '700',
   },
   checkpointActions: {
     width: '100%',
