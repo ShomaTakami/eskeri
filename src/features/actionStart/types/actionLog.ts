@@ -1,12 +1,10 @@
-export type FeelingAfter = 'light' | 'normal' | 'heavy';
-
 export type ActionLog = {
   id: string;
   title: string;
   startedAt: string;
   duration: number;
   heavinessBefore: number;
-  feelingAfter: FeelingAfter;
+  feelingAfter: number;
   momentumAwarded?: boolean;
 };
 
@@ -15,6 +13,6 @@ export type CreateActionLogInput = {
   startedAt: string;
   duration: number;
   heavinessBefore: number;
-  feelingAfter: FeelingAfter;
+  feelingAfter: number;
   momentumAwarded?: boolean;
 };

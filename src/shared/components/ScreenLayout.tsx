@@ -28,9 +28,6 @@ export function ScreenLayout({
         ) : null}
         <Text style={styles.title}>{title}</Text>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-        {appName ? (
-          <Text style={styles.tagline}>Think less. Start now.</Text>
-        ) : null}
         {showMomentum ? <MomentumBadge /> : null}
         {children}
       </View>

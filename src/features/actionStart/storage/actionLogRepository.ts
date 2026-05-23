@@ -1,17 +1,30 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { STORAGE_KEYS } from '../../../shared/constants/storageKeys';
-import type { ActionLog, FeelingAfter } from '../types/actionLog';
+import type { ActionLog } from '../types/actionLog';
+import { isScaleValue } from '../utils/scale';
 
-function isFeelingAfter(value: unknown): value is FeelingAfter {
-  return value === 'light' || value === 'normal' || value === 'heavy';
+function normalizeFeelingAfter(value: unknown): number | null {
+  if (isScaleValue(value)) {
+    return value;
+  }
+  if (value === 'light') {
+    return 1;
+  }
+  if (value === 'normal') {
+    return 3;
+  }
+  if (value === 'heavy') {
+    return 5;
+  }
+  return null;
 }
 
 function normalizeLog(raw: unknown): ActionLog | null {
   if (!raw || typeof raw !== 'object') {
     return null;
   }
-  const item = raw as Partial<ActionLog>;
+  const item = raw as Partial<ActionLog> & { feelingAfter?: unknown };
   if (
     typeof item.id !== 'string' ||
     typeof item.title !== 'string' ||
@@ -20,11 +33,10 @@ function normalizeLog(raw: unknown): ActionLog | null {
   ) {
     return null;
   }
-  const heavinessBefore =
-    typeof item.heavinessBefore === 'number' ? item.heavinessBefore : null;
-  const feelingAfter = isFeelingAfter(item.feelingAfter)
-    ? item.feelingAfter
+  const heavinessBefore = isScaleValue(item.heavinessBefore)
+    ? item.heavinessBefore
     : null;
+  const feelingAfter = normalizeFeelingAfter(item.feelingAfter);
   if (heavinessBefore === null || feelingAfter === null) {
     return null;
   }

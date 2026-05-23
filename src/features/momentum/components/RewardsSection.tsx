@@ -95,7 +95,7 @@ export function RewardsSection() {
         始められた自分への、ゆるいご褒美を設定しましょう。
       </Text>
       <Text style={styles.momentumLine}>
-        Momentum <Text style={styles.momentumValue}>{momentumPoints}</Text>
+        ポイント <Text style={styles.momentumValue}>{momentumPoints}</Text>
       </Text>
 
       {rewards.length === 0 && !showDraft ? (
@@ -158,7 +158,7 @@ export function RewardsSection() {
             style={styles.input}
             value={draftMomentum}
             onChangeText={setDraftMomentum}
-            placeholder="必要な Momentum（例: 10）"
+            placeholder="必要なポイント（例: 10）"
             placeholderTextColor="#9ca3af"
             keyboardType="number-pad"
           />

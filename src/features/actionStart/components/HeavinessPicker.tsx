@@ -1,8 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ACCENT } from '../../../shared/theme/colors';
-
-const VALUES = [1, 2, 3, 4, 5] as const;
+import { SCALE_VALUES } from '../utils/scale';
 
 type HeavinessPickerProps = {
   value: number | null;
@@ -14,7 +13,7 @@ export function HeavinessPicker({ value, onChange }: HeavinessPickerProps) {
     <View style={styles.container}>
       <Text style={styles.label}>今どれくらい重い？</Text>
       <View style={styles.row}>
-        {VALUES.map((n) => {
+        {SCALE_VALUES.map((n) => {
           const selected = value === n;
           return (
             <Pressable

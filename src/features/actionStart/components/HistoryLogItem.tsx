@@ -2,8 +2,6 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import type { ActionLog } from '../types/actionLog';
 import { formatTime } from '../utils/dates';
-import { feelingAfterLabel } from '../utils/labels';
-
 type HistoryLogItemProps = {
   log: ActionLog;
 };
@@ -21,7 +19,7 @@ export function HistoryLogItem({ log }: HistoryLogItemProps) {
         </Text>
         <Text style={styles.metaDot}>·</Text>
         <Text style={styles.meta}>
-          完了後: <Text style={styles.metaValue}>{feelingAfterLabel(log.feelingAfter)}</Text>
+          完了後: <Text style={styles.metaValue}>{log.feelingAfter}</Text>
         </Text>
       </View>
     </View>

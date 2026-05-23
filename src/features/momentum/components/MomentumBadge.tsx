@@ -12,7 +12,7 @@ export function MomentumBadge() {
   return (
     <View style={styles.wrap}>
       <Text style={styles.label}>
-        Momentum <Text style={styles.value}>{momentumPoints}</Text>
+        ポイント <Text style={styles.value}>{momentumPoints}</Text>
       </Text>
     </View>
   );

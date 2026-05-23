@@ -1,28 +1,37 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import type { FeelingAfter } from '../types/actionLog';
-import { feelingAfterLabel } from '../utils/labels';
-
-const OPTIONS: FeelingAfter[] = ['light', 'normal', 'heavy'];
+import { ACCENT } from '../../../shared/theme/colors';
+import { SCALE_VALUES } from '../utils/scale';
 
 type FeelingPickerProps = {
-  onSelect: (feeling: FeelingAfter) => void;
+  onSelect: (feeling: number) => void;
 };
 
 export function FeelingPicker({ onSelect }: FeelingPickerProps) {
   return (
     <View style={styles.container}>
       <Text style={styles.question}>始めてみてどうだった？</Text>
-      <View style={styles.options}>
-        {OPTIONS.map((option) => (
+      <View style={styles.row}>
+        {SCALE_VALUES.map((n) => (
           <Pressable
-            key={option}
-            style={({ pressed }) => [styles.option, pressed && styles.pressed]}
-            onPress={() => onSelect(option)}
+            key={n}
+            style={({ pressed }) => [
+              styles.button,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={() => onSelect(n)}
           >
-            <Text style={styles.optionLabel}>{feelingAfterLabel(option)}</Text>
+            {({ pressed }) => (
+              <Text style={[styles.number, pressed && styles.numberPressed]}>
+                {n}
+              </Text>
+            )}
           </Pressable>
         ))}
+      </View>
+      <View style={styles.scale}>
+        <Text style={styles.scaleText}>1 = 軽かった</Text>
+        <Text style={styles.scaleText}>5 = 重かった</Text>
       </View>
     </View>
   );
@@ -40,23 +49,38 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 28,
   },
-  options: {
-    gap: 12,
+  row: {
+    flexDirection: 'row',
+    gap: 8,
   },
-  option: {
-    paddingVertical: 16,
-    borderRadius: 12,
+  button: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#e5e7eb',
     backgroundColor: '#ffffff',
     alignItems: 'center',
   },
-  pressed: {
-    opacity: 0.88,
+  buttonPressed: {
+    borderColor: ACCENT,
+    backgroundColor: ACCENT,
   },
-  optionLabel: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#111827',
+  number: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  numberPressed: {
+    color: '#ffffff',
+  },
+  scale: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+  },
+  scaleText: {
+    fontSize: 12,
+    color: '#9ca3af',
   },
 });

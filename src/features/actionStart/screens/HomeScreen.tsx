@@ -16,7 +16,7 @@ import { ACCENT } from '../../../shared/theme/colors';
 import { HeavinessPicker } from '../components/HeavinessPicker';
 
 const PLACEHOLDER_EXAMPLES = [
-  'Go勉強',
+  '勉強',
   '英語',
   '筋トレ',
   '掃除',

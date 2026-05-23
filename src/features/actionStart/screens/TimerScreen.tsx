@@ -15,7 +15,6 @@ import {
   cancelTimerNotification,
   scheduleTimerNotification,
 } from '../services/timerNotifications';
-import type { FeelingAfter } from '../types/actionLog';
 import {
   EXTENSION_MINUTES,
   formatTimer,
@@ -76,7 +75,7 @@ export function TimerScreen() {
   }, []);
 
   const handleFeelingSelect = useCallback(
-    async (feelingAfter: FeelingAfter) => {
+    async (feelingAfter: number) => {
       if (savingRef.current) {
         return;
       }
