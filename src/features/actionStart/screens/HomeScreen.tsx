@@ -78,7 +78,15 @@ export function HomeScreen() {
           例: {PLACEHOLDER_EXAMPLES.join(' / ')}
         </Text>
 
-        <HeavinessPicker value={heaviness} onChange={setHeaviness} />
+        <HeavinessPicker
+          value={heaviness}
+          onChange={(value) => {
+            setHeaviness(value);
+            if (error) {
+              setError('');
+            }
+          }}
+        />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 

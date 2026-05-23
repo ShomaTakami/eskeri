@@ -61,8 +61,16 @@ export function DebugSection() {
         style: 'destructive',
         onPress: () => {
           void (async () => {
-            await action.run();
-            Alert.alert('完了', action.message);
+            try {
+              await action.run();
+              Alert.alert('完了', action.message);
+            } catch (error) {
+              console.error(`[Debug] ${action.label} failed`, error);
+              Alert.alert(
+                'エラー',
+                `${action.label}に失敗しました。コンソールを確認してください。`,
+              );
+            }
           })();
         },
       },

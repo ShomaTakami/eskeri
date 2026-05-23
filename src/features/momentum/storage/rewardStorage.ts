@@ -32,7 +32,12 @@ export async function loadRewards(): Promise<Reward[]> {
   if (!raw) {
     return [];
   }
-  const parsed = JSON.parse(raw) as unknown[];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
   if (!Array.isArray(parsed)) {
     return [];
   }

@@ -12,9 +12,14 @@ export function AppRoot() {
 
   useEffect(() => {
     void (async () => {
-      const completed = await isOnboardingCompleted();
-      setShowOnboarding(!completed);
-      setBooting(false);
+      try {
+        const completed = await isOnboardingCompleted();
+        setShowOnboarding(!completed);
+      } catch {
+        setShowOnboarding(true);
+      } finally {
+        setBooting(false);
+      }
     })();
   }, []);
 

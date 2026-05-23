@@ -39,6 +39,8 @@ export function ActionStartProvider({ children }: { children: ReactNode }) {
     void (async () => {
       try {
         await refresh();
+      } catch (error) {
+        console.error('[ActionStart] initial load failed', error);
       } finally {
         setLoading(false);
       }

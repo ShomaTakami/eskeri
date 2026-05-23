@@ -49,6 +49,8 @@ export function MomentumProvider({ children }: { children: ReactNode }) {
         ]);
         setMomentumPoints(points);
         setRewards(storedRewards);
+      } catch (error) {
+        console.error('[Momentum] initial load failed', error);
       } finally {
         setLoading(false);
       }

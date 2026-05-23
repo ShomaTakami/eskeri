@@ -30,9 +30,18 @@ export function formatTime(isoDate: string): string {
 }
 
 export type HistorySection = {
+  dayKey: string;
   title: string;
   logs: ActionLog[];
 };
+
+function dayKey(isoDate: string): string {
+  const date = new Date(isoDate);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 function dayLabel(isoDate: string): string {
   if (isToday(isoDate)) {
@@ -42,6 +51,14 @@ function dayLabel(isoDate: string): string {
     return '昨日';
   }
   const date = new Date(isoDate);
+  const now = new Date();
+  if (date.getFullYear() !== now.getFullYear()) {
+    return date.toLocaleDateString('ja-JP', {
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    });
+  }
   return date.toLocaleDateString('ja-JP', {
     month: 'numeric',
     day: 'numeric',
@@ -56,12 +73,13 @@ export function groupLogsByDay(logs: ActionLog[]): HistorySection[] {
   const sections: HistorySection[] = [];
 
   for (const log of sorted) {
-    const label = dayLabel(log.startedAt);
+    const key = dayKey(log.startedAt);
+    const title = dayLabel(log.startedAt);
     const last = sections[sections.length - 1];
-    if (last?.title === label) {
+    if (last?.dayKey === key) {
       last.logs.push(log);
     } else {
-      sections.push({ title: label, logs: [log] });
+      sections.push({ dayKey: key, title, logs: [log] });
     }
   }
 

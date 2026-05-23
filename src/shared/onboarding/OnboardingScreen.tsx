@@ -31,7 +31,11 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [page, setPage] = useState(0);
 
   const handleComplete = async () => {
-    await setOnboardingCompleted();
+    try {
+      await setOnboardingCompleted();
+    } catch {
+      // 保存失敗時も先に進める（再表示は次回起動時の可能性あり）
+    }
     onComplete();
   };
 

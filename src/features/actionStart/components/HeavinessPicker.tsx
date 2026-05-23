@@ -18,6 +18,9 @@ export function HeavinessPicker({ value, onChange }: HeavinessPickerProps) {
           return (
             <Pressable
               key={n}
+              accessibilityRole="button"
+              accessibilityLabel={`重さレベル${n}`}
+              accessibilityState={{ selected }}
               style={[
                 styles.button,
                 selected && {
@@ -28,6 +31,7 @@ export function HeavinessPicker({ value, onChange }: HeavinessPickerProps) {
               onPress={() => onChange(n)}
             >
               <Text
+                accessible={false}
                 style={[
                   styles.number,
                   selected && styles.numberSelected,

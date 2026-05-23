@@ -2,7 +2,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { StartStackParamList } from '../../../navigation/types';
@@ -80,23 +80,30 @@ export function TimerScreen() {
         return;
       }
       savingRef.current = true;
-      await cancelTimerNotification();
-      const duration = Math.max(
-        1,
-        Math.round((Date.now() - new Date(startedAt).getTime()) / 1000),
-      );
-      await saveAction({
-        title,
-        startedAt,
-        duration,
-        heavinessBefore,
-        feelingAfter,
-        momentumAwarded: momentumAwardedRef.current,
-      });
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'HomeScreen' }],
-      });
+      try {
+        await cancelTimerNotification();
+        const duration = Math.max(
+          1,
+          Math.round((Date.now() - new Date(startedAt).getTime()) / 1000),
+        );
+        await saveAction({
+          title,
+          startedAt,
+          duration,
+          heavinessBefore,
+          feelingAfter,
+          momentumAwarded: momentumAwardedRef.current,
+        });
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'HomeScreen' }],
+        });
+      } catch (error) {
+        console.error('[Timer] save failed', error);
+        Alert.alert('保存に失敗しました', 'もう一度お試しください。');
+      } finally {
+        savingRef.current = false;
+      }
     },
     [heavinessBefore, navigation, saveAction, startedAt, title],
   );

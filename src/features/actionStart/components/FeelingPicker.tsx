@@ -15,6 +15,8 @@ export function FeelingPicker({ onSelect }: FeelingPickerProps) {
         {SCALE_VALUES.map((n) => (
           <Pressable
             key={n}
+            accessibilityRole="button"
+            accessibilityLabel={`完了後の感覚レベル${n}`}
             style={({ pressed }) => [
               styles.button,
               pressed && styles.buttonPressed,
@@ -22,7 +24,10 @@ export function FeelingPicker({ onSelect }: FeelingPickerProps) {
             onPress={() => onSelect(n)}
           >
             {({ pressed }) => (
-              <Text style={[styles.number, pressed && styles.numberPressed]}>
+              <Text
+                accessible={false}
+                style={[styles.number, pressed && styles.numberPressed]}
+              >
                 {n}
               </Text>
             )}
