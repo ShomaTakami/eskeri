@@ -82,7 +82,7 @@ npx expo start -c
 
 ### 補足
 
-- **ローカル通知** — v1 では Expo Go 向けに `ENABLE_NOTIFICATIONS = false`（`src/features/actionStart/services/timerNotifications.ts`）
+- **ローカル通知** — タイマー終了時に「Eskeri / 終了」を表示（Push 不要）。最終確認は EAS development build 推奨
 - **Debug** — `__DEV__` 時のみ Settings 下部に表示（データ初期化など）
 
 ---
