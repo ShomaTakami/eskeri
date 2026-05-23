@@ -44,19 +44,34 @@ export function TimerScreen() {
   const progress =
     totalSeconds > 0 ? remainingSeconds / totalSeconds : 0;
 
-  const goToCheckpoint = useCallback((naturalExpiry = false) => {
+  const exitWithoutSaving = useCallback(() => {
     void cancelTimerNotification();
-    setRemainingSeconds(0);
-    if (!naturalExpiry) {
-      setPhase('feeling');
-      return;
-    }
-    if (!onExtensionRef.current) {
-      setPhase('startCheckpoint');
-      return;
-    }
-    setPhase('checkpoint');
-  }, []);
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'HomeScreen' }],
+    });
+  }, [navigation]);
+
+  const goToCheckpoint = useCallback(
+    (naturalExpiry = false) => {
+      void cancelTimerNotification();
+      setRemainingSeconds(0);
+      if (!naturalExpiry) {
+        if (onExtensionRef.current) {
+          setPhase('feeling');
+        } else {
+          exitWithoutSaving();
+        }
+        return;
+      }
+      if (!onExtensionRef.current) {
+        setPhase('startCheckpoint');
+        return;
+      }
+      setPhase('checkpoint');
+    },
+    [exitWithoutSaving],
+  );
 
   const handleEngaged = useCallback(() => {
     if (!momentumAwardedRef.current) {
@@ -67,8 +82,8 @@ export function TimerScreen() {
   }, [awardMomentum, heavinessBefore]);
 
   const handleStartCheckpointEnd = useCallback(() => {
-    setPhase('feeling');
-  }, []);
+    exitWithoutSaving();
+  }, [exitWithoutSaving]);
 
   const startExtension = useCallback((minutes: ExtensionMinutes) => {
     onExtensionRef.current = true;
@@ -79,6 +94,9 @@ export function TimerScreen() {
   }, []);
 
   const goToFeeling = useCallback(() => {
+    if (!momentumAwardedRef.current) {
+      return;
+    }
     void cancelTimerNotification();
     setPhase('feeling');
   }, []);
