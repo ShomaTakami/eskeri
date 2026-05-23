@@ -169,7 +169,7 @@ export function TimerScreen() {
           {phase === 'running' ? (
             <Text style={styles.timer}>{formatTimer(remainingSeconds)}</Text>
           ) : phase === 'startCheckpoint' ? (
-            <Text style={styles.checkpointLabel}>開始</Text>
+            <Text style={styles.checkpointLabel}>終了</Text>
           ) : (
             <Text style={styles.checkpointLabel}>完了</Text>
           )}
