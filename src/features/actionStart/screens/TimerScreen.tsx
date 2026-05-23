@@ -2,7 +2,15 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  AppState,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { StartStackParamList } from '../../../navigation/types';
@@ -11,6 +19,15 @@ import { CircularProgress } from '../components/CircularProgress';
 import { FeelingPicker } from '../components/FeelingPicker';
 import { useMomentum } from '../../momentum/hooks/MomentumContext';
 import { useActionStart } from '../hooks/ActionStartContext';
+import {
+  clearActiveTaskSession,
+  getActiveTaskSession,
+  resolvePhaseAfterTimerEnd,
+  saveActiveTaskSession,
+  updateActiveTaskSession,
+  type ActiveTaskPhase,
+  type ActiveTaskSession,
+} from '../storage/activeTaskSession';
 import {
   cancelTimerNotification,
   openNotificationSettings,
@@ -30,17 +47,57 @@ import {
   type ExtensionMinutes,
 } from '../utils/formatTimer';
 
-type TimerRouteProp = RouteProp<StartStackParamList, 'TimerScreen'>;
-type NavigationProp = NativeStackNavigationProp<StartStackParamList, 'TimerScreen'>;
+type TimerRouteProp = RouteProp<StartStackParamList, 'TimerScreen' | 'TaskComplete'>;
+type NavigationProp = NativeStackNavigationProp<StartStackParamList>;
 
-type Phase = 'running' | 'startCheckpoint' | 'checkpoint' | 'feeling';
+type Phase = ActiveTaskPhase;
+
+function buildSessionSnapshot(params: {
+  taskId: string;
+  title: string;
+  startedAt: string;
+  heavinessBefore: number;
+  phase: Phase;
+  onExtension: boolean;
+  momentumAwarded: boolean;
+  timerClock: TimerClock;
+  totalSeconds: number;
+}): ActiveTaskSession {
+  return {
+    taskId: params.taskId,
+    title: params.title,
+    startedAt: params.startedAt,
+    heavinessBefore: params.heavinessBefore,
+    onExtension: params.onExtension,
+    momentumAwarded: params.momentumAwarded,
+    phase: params.phase,
+    segmentStartedAtMs: params.timerClock.segmentStartedAtMs,
+    endAtMs: params.timerClock.endAtMs,
+    totalSeconds: params.totalSeconds,
+  };
+}
 
 export function TimerScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<TimerRouteProp>();
-  const { title, startedAt, heavinessBefore } = route.params;
+  const isTaskCompleteEntry = route.name === 'TaskComplete';
   const { saveAction } = useActionStart();
   const { awardMomentum } = useMomentum();
+
+  const [hydrated, setHydrated] = useState(!isTaskCompleteEntry);
+  const [taskId, setTaskId] = useState(
+    () => (route.name === 'TimerScreen' ? route.params.taskId : ''),
+  );
+  const [title, setTitle] = useState(
+    () => (route.name === 'TimerScreen' ? route.params.title : ''),
+  );
+  const [startedAt, setStartedAt] = useState(
+    () => (route.name === 'TimerScreen' ? route.params.startedAt : ''),
+  );
+  const [heavinessBefore, setHeavinessBefore] = useState(
+    () => (route.name === 'TimerScreen' ? route.params.heavinessBefore : 0),
+  );
+
   const [phase, setPhase] = useState<Phase>('running');
   const [totalSeconds, setTotalSeconds] = useState(INITIAL_TIMER_SECONDS);
   const timerClockRef = useRef<TimerClock>(createTimerClock(INITIAL_TIMER_SECONDS));
@@ -53,10 +110,30 @@ export function TimerScreen() {
   const notificationAlertShownRef = useRef(false);
   const timerExpiredRef = useRef(false);
 
-  const progress =
-    totalSeconds > 0 ? remainingSeconds / totalSeconds : 0;
+  const progress = totalSeconds > 0 ? remainingSeconds / totalSeconds : 0;
 
-  /** segmentStartedAt / endAt を基準に残り秒を再計算（ロック復帰・バックグラウンド復帰用） */
+  const persistSession = useCallback(
+    async (nextPhase: Phase) => {
+      if (!taskId) {
+        return;
+      }
+      await saveActiveTaskSession(
+        buildSessionSnapshot({
+          taskId,
+          title,
+          startedAt,
+          heavinessBefore,
+          phase: nextPhase,
+          onExtension: onExtensionRef.current,
+          momentumAwarded: momentumAwardedRef.current,
+          timerClock: timerClockRef.current,
+          totalSeconds,
+        }),
+      );
+    },
+    [heavinessBefore, startedAt, taskId, title, totalSeconds],
+  );
+
   const syncRemainingFromEndAt = useCallback(() => {
     const remaining = remainingSecondsFromTimerClock(timerClockRef.current);
     setRemainingSeconds(remaining);
@@ -71,6 +148,7 @@ export function TimerScreen() {
 
   const exitWithoutSaving = useCallback(() => {
     void cancelTimerNotification();
+    void clearActiveTaskSession();
     navigation.reset({
       index: 0,
       routes: [{ name: 'HomeScreen' }],
@@ -84,18 +162,20 @@ export function TimerScreen() {
       if (!naturalExpiry) {
         if (onExtensionRef.current) {
           setPhase('feeling');
+          void persistSession('feeling');
         } else {
           exitWithoutSaving();
         }
         return;
       }
-      if (!onExtensionRef.current) {
-        setPhase('startCheckpoint');
-        return;
-      }
-      setPhase('checkpoint');
+      const nextPhase: Phase = !onExtensionRef.current
+        ? 'startCheckpoint'
+        : 'checkpoint';
+      timerExpiredRef.current = true;
+      setPhase(nextPhase);
+      void persistSession(nextPhase);
     },
-    [exitWithoutSaving],
+    [exitWithoutSaving, persistSession],
   );
 
   const handleEngaged = useCallback(() => {
@@ -104,7 +184,9 @@ export function TimerScreen() {
       void awardMomentum(heavinessBefore);
     }
     setPhase('checkpoint');
-  }, [awardMomentum, heavinessBefore]);
+    void persistSession('checkpoint');
+    void updateActiveTaskSession(taskId, { momentumAwarded: true, phase: 'checkpoint' });
+  }, [awardMomentum, heavinessBefore, persistSession, taskId]);
 
   const handleStartCheckpointEnd = useCallback(() => {
     exitWithoutSaving();
@@ -117,8 +199,17 @@ export function TimerScreen() {
       setTotalSeconds(seconds);
       setRemainingSeconds(resetTimerClock(seconds));
       setPhase('running');
+      timerExpiredRef.current = false;
+      void persistSession('running');
+    void updateActiveTaskSession(taskId, {
+        onExtension: true,
+        phase: 'running',
+        totalSeconds: seconds,
+        segmentStartedAtMs: timerClockRef.current.segmentStartedAtMs,
+        endAtMs: timerClockRef.current.endAtMs,
+      });
     },
-    [resetTimerClock],
+    [persistSession, resetTimerClock, taskId],
   );
 
   const goToFeeling = useCallback(() => {
@@ -127,7 +218,8 @@ export function TimerScreen() {
     }
     void cancelTimerNotification();
     setPhase('feeling');
-  }, []);
+    void persistSession('feeling');
+  }, [persistSession]);
 
   const handleFeelingSelect = useCallback(
     async (feelingAfter: number) => {
@@ -149,6 +241,7 @@ export function TimerScreen() {
           feelingAfter,
           momentumAwarded: momentumAwardedRef.current,
         });
+        await clearActiveTaskSession();
         navigation.reset({
           index: 0,
           routes: [{ name: 'HomeScreen' }],
@@ -164,12 +257,70 @@ export function TimerScreen() {
   );
 
   useEffect(() => {
-    if (phase !== 'running') {
+    if (!isTaskCompleteEntry) {
+      if (route.name !== 'TimerScreen') {
+        return;
+      }
+      const clock = createTimerClock(INITIAL_TIMER_SECONDS);
+      timerClockRef.current = clock;
+      void saveActiveTaskSession(
+        buildSessionSnapshot({
+          taskId: route.params.taskId,
+          title: route.params.title,
+          startedAt: route.params.startedAt,
+          heavinessBefore: route.params.heavinessBefore,
+          phase: 'running',
+          onExtension: false,
+          momentumAwarded: false,
+          timerClock: clock,
+          totalSeconds: INITIAL_TIMER_SECONDS,
+        }),
+      );
+      setHydrated(true);
+      return;
+    }
+
+    void (async () => {
+      const session = await getActiveTaskSession(route.params.taskId);
+      if (!session) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'HomeScreen' }],
+        });
+        return;
+      }
+
+      setTaskId(session.taskId);
+      setTitle(session.title);
+      setStartedAt(session.startedAt);
+      setHeavinessBefore(session.heavinessBefore);
+      onExtensionRef.current = session.onExtension;
+      momentumAwardedRef.current = session.momentumAwarded;
+      setTotalSeconds(session.totalSeconds);
+      timerClockRef.current = {
+        segmentStartedAtMs: session.segmentStartedAtMs,
+        endAtMs: session.endAtMs,
+      };
+
+      const nextPhase = resolvePhaseAfterTimerEnd(session);
+      timerExpiredRef.current = nextPhase !== 'running';
+      setPhase(nextPhase);
+      setRemainingSeconds(
+        nextPhase === 'running'
+          ? remainingSecondsFromTimerClock(timerClockRef.current)
+          : 0,
+      );
+      setHydrated(true);
+    })();
+  }, [isTaskCompleteEntry, navigation, route]);
+
+  useEffect(() => {
+    if (!hydrated || phase !== 'running' || !taskId) {
       return;
     }
     const delaySeconds = remainingSecondsFromEndAt(timerClockRef.current.endAtMs);
     void (async () => {
-      const scheduled = await scheduleTimerNotification(delaySeconds);
+      const scheduled = await scheduleTimerNotification(taskId, delaySeconds);
       if (scheduled || notificationAlertShownRef.current) {
         return;
       }
@@ -188,16 +339,10 @@ export function TimerScreen() {
         ],
       );
     })();
-  }, [phase, totalSeconds]);
+  }, [hydrated, phase, taskId, totalSeconds]);
 
   useEffect(() => {
-    return () => {
-      void cancelTimerNotification();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (phase !== 'running') {
+    if (!hydrated || phase !== 'running') {
       return;
     }
 
@@ -213,7 +358,6 @@ export function TimerScreen() {
 
     const interval = setInterval(tick, 1000);
     const appStateSubscription = AppState.addEventListener('change', (nextState) => {
-      // ロック直前（inactive/background）と復帰（active）の両方で endAt から再計算
       if (
         nextState === 'active' ||
         nextState === 'inactive' ||
@@ -227,7 +371,17 @@ export function TimerScreen() {
       clearInterval(interval);
       appStateSubscription.remove();
     };
-  }, [phase, syncRemainingFromEndAt, goToCheckpoint]);
+  }, [hydrated, phase, syncRemainingFromEndAt, goToCheckpoint]);
+
+  if (!hydrated) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <View style={styles.loading}>
+          <ActivityIndicator size="large" color={ACCENT} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (phase === 'feeling') {
     return (
@@ -244,11 +398,7 @@ export function TimerScreen() {
       <View style={styles.container}>
         <Text style={styles.actionTitle}>{title}</Text>
 
-        <CircularProgress
-          progress={
-            phase === 'running' ? progress : 0
-          }
-        >
+        <CircularProgress progress={phase === 'running' ? progress : 0}>
           {phase === 'running' ? (
             <Text style={styles.timer}>{formatTimer(remainingSeconds)}</Text>
           ) : phase === 'startCheckpoint' ? (
@@ -338,6 +488,11 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#f8f9fb',
+  },
+  loading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   container: {
     flex: 1,

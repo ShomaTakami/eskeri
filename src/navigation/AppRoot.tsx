@@ -1,9 +1,18 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, StyleSheet, View } from 'react-native';
 
+import {
+  handleInitialNotificationResponse,
+  initializeNotifications,
+} from '../features/actionStart/services/timerNotifications';
 import { OnboardingScreen } from '../shared/onboarding/OnboardingScreen';
 import { isOnboardingCompleted } from '../shared/onboarding/onboardingStorage';
+import {
+  flushPendingNotificationNavigation,
+  navigationRef,
+} from './notificationNavigation';
+import { resumeActiveTaskIfNeeded } from './resumeActiveTask';
 import { RootNavigator } from './RootNavigator';
 
 export function AppRoot() {
@@ -23,6 +32,20 @@ export function AppRoot() {
     })();
   }, []);
 
+  useEffect(() => {
+    if (booting || showOnboarding) {
+      return;
+    }
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void resumeActiveTaskIfNeeded();
+      }
+    });
+
+    return () => subscription.remove();
+  }, [booting, showOnboarding]);
+
   if (booting) {
     return (
       <View style={styles.loading}>
@@ -37,8 +60,17 @@ export function AppRoot() {
     );
   }
 
+  const handleNavigationReady = () => {
+    initializeNotifications();
+    flushPendingNotificationNavigation();
+    void (async () => {
+      await handleInitialNotificationResponse();
+      await resumeActiveTaskIfNeeded();
+    })();
+  };
+
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef} onReady={handleNavigationReady}>
       <RootNavigator />
     </NavigationContainer>
   );

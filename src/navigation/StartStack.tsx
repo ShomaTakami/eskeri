@@ -14,6 +14,11 @@ export function StartStack() {
         component={TimerScreen}
         options={{ animation: 'fade' }}
       />
+      <Stack.Screen
+        name="TaskComplete"
+        component={TimerScreen}
+        options={{ animation: 'fade' }}
+      />
     </Stack.Navigator>
   );
 }

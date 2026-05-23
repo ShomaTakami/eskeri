@@ -5,13 +5,16 @@
 import * as Notifications from 'expo-notifications';
 import { Linking } from 'react-native';
 
+import { buildTimerNotificationData } from '../constants/notificationScreens';
+import {
+  isNotificationUserEnabled,
+} from '../../settings/storage/notificationPreferences';
+import {
+  handleNotificationResponse,
+} from '../../../navigation/notificationNavigation';
+
 export const ENABLE_NOTIFICATIONS = true;
 
-/**
- * Android（expo-notifications@0.16）では requestPermissionsAsync が
- * システムダイアログを出さず、通知オン/オフの状態を読むだけ。
- * オフのときは設定アプリから有効化が必要。
- */
 export type NotificationPermissionSnapshot = {
   granted: boolean;
   status: string;
@@ -44,7 +47,9 @@ const NOTIFICATION_DEBUG = __DEV__;
 let scheduledNotificationId: string | null = null;
 let permissionRequested = false;
 let handlerConfigured = false;
+let responseListenerConfigured = false;
 let debugListenersConfigured = false;
+let initialResponseHandled = false;
 
 function logNotification(message: string, payload?: unknown): void {
   if (!NOTIFICATION_DEBUG) {
@@ -80,7 +85,6 @@ async function logScheduledNotifications(context: string): Promise<void> {
   }
 }
 
-/** 検証中（__DEV__）は予約開始前に既存予約をすべてクリア */
 async function clearScheduledNotificationsBeforeStart(): Promise<void> {
   if (!ENABLE_NOTIFICATIONS || !__DEV__) {
     return;
@@ -106,6 +110,7 @@ function configureNotificationHandler(): void {
         id: notification.request.identifier,
         title: notification.request.content.title,
         body: notification.request.content.body,
+        data: notification.request.content.data,
       });
       return {
         shouldShowAlert: true,
@@ -120,10 +125,20 @@ function configureNotificationHandler(): void {
       warnNotification('handleError', { notificationId, error });
     },
   });
-  logNotification('NotificationHandler configured', {
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
+}
+
+function configureNotificationResponseListener(): void {
+  if (!ENABLE_NOTIFICATIONS || responseListenerConfigured) {
+    return;
+  }
+  responseListenerConfigured = true;
+
+  Notifications.addNotificationResponseReceivedListener((response) => {
+    logNotification('addNotificationResponseReceivedListener', {
+      actionIdentifier: response.actionIdentifier,
+      data: response.notification.request.content.data,
+    });
+    void handleNotificationResponse(response);
   });
 }
 
@@ -136,20 +151,9 @@ function configureDebugListeners(): void {
   Notifications.addNotificationReceivedListener((notification) => {
     logNotification('addNotificationReceivedListener', {
       id: notification.request.identifier,
-      title: notification.request.content.title,
-      body: notification.request.content.body,
-      trigger: notification.request.trigger,
+      data: notification.request.content.data,
     });
   });
-
-  Notifications.addNotificationResponseReceivedListener((response) => {
-    logNotification('addNotificationResponseReceivedListener', {
-      actionIdentifier: response.actionIdentifier,
-      id: response.notification.request.identifier,
-    });
-  });
-
-  logNotification('debug listeners registered');
 }
 
 export function initializeNotifications(): void {
@@ -157,7 +161,28 @@ export function initializeNotifications(): void {
     return;
   }
   configureNotificationHandler();
+  configureNotificationResponseListener();
   configureDebugListeners();
+}
+
+/** 通知タップでコールドスタートしたとき */
+export async function handleInitialNotificationResponse(): Promise<void> {
+  if (!ENABLE_NOTIFICATIONS || initialResponseHandled) {
+    return;
+  }
+  try {
+    const response = await Notifications.getLastNotificationResponseAsync();
+    if (!response) {
+      return;
+    }
+    initialResponseHandled = true;
+    logNotification('getLastNotificationResponseAsync', {
+      data: response.notification.request.content.data,
+    });
+    await handleNotificationResponse(response);
+  } catch (error) {
+    warnNotification('getLastNotificationResponseAsync failed', error);
+  }
 }
 
 export async function ensureNotificationPermission(): Promise<boolean> {
@@ -178,7 +203,7 @@ export async function ensureNotificationPermission(): Promise<boolean> {
     logNotification('requestPermissionsAsync', requested);
     if (!requested.granted) {
       warnNotification(
-        'notifications disabled — enable in system settings (Android SDK46 does not show a permission dialog)',
+        'notifications disabled — enable in system settings',
         requested,
       );
     }
@@ -210,11 +235,19 @@ export async function cancelTimerNotification(): Promise<void> {
 }
 
 export async function scheduleTimerNotification(
+  taskId: string,
   seconds: number,
 ): Promise<boolean> {
   if (!ENABLE_NOTIFICATIONS) {
     return false;
   }
+
+  const userEnabled = await isNotificationUserEnabled();
+  if (!userEnabled) {
+    logNotification('schedule skipped: user disabled notifications in settings');
+    return false;
+  }
+
   const delaySeconds = Math.max(1, Math.ceil(seconds));
   if (delaySeconds <= 0) {
     return false;
@@ -226,15 +259,15 @@ export async function scheduleTimerNotification(
 
     const granted = await ensureNotificationPermission();
     if (!granted) {
-      warnNotification(
-        'schedule skipped: notifications off — open Settings → Apps → Eskeri → Notifications',
-      );
+      warnNotification('schedule skipped: notifications off');
       return false;
     }
 
+    const data = buildTimerNotificationData(taskId);
+
     logNotification('scheduleNotificationAsync request', {
       delaySeconds,
-      content: { title: 'Eskeri', body: '終了' },
+      data,
     });
 
     const id = await Notifications.scheduleNotificationAsync({
@@ -242,6 +275,7 @@ export async function scheduleTimerNotification(
         title: 'Eskeri',
         body: '終了',
         sound: true,
+        data,
       },
       trigger: {
         seconds: delaySeconds,
@@ -249,7 +283,7 @@ export async function scheduleTimerNotification(
     });
 
     scheduledNotificationId = id;
-    logNotification('scheduleNotificationAsync result', { id, delaySeconds });
+    logNotification('scheduleNotificationAsync result', { id, delaySeconds, data });
     await logScheduledNotifications('after schedule');
     return true;
   } catch (error) {
@@ -274,11 +308,6 @@ export async function dumpNotificationDebugState(): Promise<void> {
     if (!current.granted) {
       const requested = await Notifications.requestPermissionsAsync();
       logNotification('requestPermissionsAsync (dump)', requested);
-      if (!requested.granted) {
-        warnNotification(
-          'notifications still off — tap「通知の設定を開く」or enable in system settings',
-        );
-      }
     }
   } catch (error) {
     warnNotification('permission dump failed', error);
@@ -292,21 +321,21 @@ export const NOTIFICATION_VERIFICATION_SCENARIOS = [
   {
     id: 'foreground',
     label: '① アプリ前面',
-    hint: 'タイマー画面のまま待つ。コンソールに handleNotification / Received が出るか確認。',
+    hint: 'タイマー画面のまま待つ。タップで完了画面（取り組めた/終わる）へ。',
   },
   {
     id: 'background',
     label: '② バックグラウンド',
-    hint: 'ホームへ戻す（タスクキルはしない）。通知トレイに「終了」が出るか確認。',
+    hint: 'ホームへ戻して通知をタップ。完了画面へ遷移するか確認。',
   },
   {
     id: 'task-kill',
     label: '③ タスクキル',
-    hint: '最近のアプリから Eskeri をスワイプ終了してから待つ。端末によって届かない場合あり。',
+    hint: 'アプリ終了後に通知タップ。起動して完了画面へ遷移するか確認。',
   },
   {
     id: 'screen-lock',
     label: '④ 画面ロック',
-    hint: '電源ボタンでロックしたまま待つ。ロック画面またはトレイに表示されるか確認。',
+    hint: 'Preview Build でロック画面から通知タップ。完了画面へ遷移するか確認。',
   },
 ] as const;
