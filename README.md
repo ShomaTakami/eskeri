@@ -83,6 +83,11 @@ npx expo start -c
 ### 補足
 
 - **ローカル通知** — タイマー終了時に「Eskeri / 終了」を表示（Push 不要）。最終確認は EAS development build 推奨
+  - 開発ビルド（`__DEV__`）では初回タイマー **60 秒**、本番は **300 秒**（`src/features/actionStart/constants/timer.ts`）
+  - 検証: Settings → Debug にチェックリスト。Metro / Logcat で `[notifications]` ログを確認
+  - 前面表示は `setNotificationHandler`（`App.tsx` 起動時に `initializeNotifications()`）
+  - **Android で `granted: false` / `canAskAgain: false`** — 端末で通知がオフ。`expo-notifications@0.16` は Android でダイアログを出さないため、**設定 → アプリ → Eskeri → 通知** をオンにする（Debug の「通知の設定を開く」でも可）
+- **Android ナビゲーションバー** — `app.json` の `androidNavigationBar` でビルド時に色を設定（`#f8f9fb`）。変更後は dev build の作り直しが必要
 - **Debug** — `__DEV__` 時のみ Settings 下部に表示（データ初期化など）
 
 ---

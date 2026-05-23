@@ -5,8 +5,7 @@ export function formatTimer(seconds: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
-/** 最初の5分 — ここまで始められれば成功 */
-export const INITIAL_TIMER_SECONDS = 5 * 60;
+export { INITIAL_TIMER_SECONDS } from '../constants/timer';
 
 /** 追加タイマー（分） */
 export const EXTENSION_MINUTES = [5, 10, 15, 30] as const;

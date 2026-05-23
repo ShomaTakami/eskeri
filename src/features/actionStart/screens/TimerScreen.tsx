@@ -2,7 +2,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { StartStackParamList } from '../../../navigation/types';
@@ -13,8 +13,15 @@ import { useMomentum } from '../../momentum/hooks/MomentumContext';
 import { useActionStart } from '../hooks/ActionStartContext';
 import {
   cancelTimerNotification,
+  openNotificationSettings,
   scheduleTimerNotification,
 } from '../services/timerNotifications';
+import {
+  createTimerClock,
+  remainingSecondsFromEndAt,
+  remainingSecondsFromTimerClock,
+  type TimerClock,
+} from '../utils/timerEndAt';
 import {
   EXTENSION_MINUTES,
   formatTimer,
@@ -35,14 +42,32 @@ export function TimerScreen() {
   const { saveAction } = useActionStart();
   const { awardMomentum } = useMomentum();
   const [phase, setPhase] = useState<Phase>('running');
-  const [remainingSeconds, setRemainingSeconds] = useState(INITIAL_TIMER_SECONDS);
   const [totalSeconds, setTotalSeconds] = useState(INITIAL_TIMER_SECONDS);
+  const timerClockRef = useRef<TimerClock>(createTimerClock(INITIAL_TIMER_SECONDS));
+  const [remainingSeconds, setRemainingSeconds] = useState(() =>
+    remainingSecondsFromTimerClock(timerClockRef.current),
+  );
   const savingRef = useRef(false);
   const onExtensionRef = useRef(false);
   const momentumAwardedRef = useRef(false);
+  const notificationAlertShownRef = useRef(false);
+  const timerExpiredRef = useRef(false);
 
   const progress =
     totalSeconds > 0 ? remainingSeconds / totalSeconds : 0;
+
+  /** segmentStartedAt / endAt を基準に残り秒を再計算（ロック復帰・バックグラウンド復帰用） */
+  const syncRemainingFromEndAt = useCallback(() => {
+    const remaining = remainingSecondsFromTimerClock(timerClockRef.current);
+    setRemainingSeconds(remaining);
+    return remaining;
+  }, []);
+
+  const resetTimerClock = useCallback((durationSeconds: number) => {
+    timerClockRef.current = createTimerClock(durationSeconds);
+    timerExpiredRef.current = false;
+    return remainingSecondsFromTimerClock(timerClockRef.current);
+  }, []);
 
   const exitWithoutSaving = useCallback(() => {
     void cancelTimerNotification();
@@ -85,13 +110,16 @@ export function TimerScreen() {
     exitWithoutSaving();
   }, [exitWithoutSaving]);
 
-  const startExtension = useCallback((minutes: ExtensionMinutes) => {
-    onExtensionRef.current = true;
-    const seconds = minutesToSeconds(minutes);
-    setTotalSeconds(seconds);
-    setRemainingSeconds(seconds);
-    setPhase('running');
-  }, []);
+  const startExtension = useCallback(
+    (minutes: ExtensionMinutes) => {
+      onExtensionRef.current = true;
+      const seconds = minutesToSeconds(minutes);
+      setTotalSeconds(seconds);
+      setRemainingSeconds(resetTimerClock(seconds));
+      setPhase('running');
+    },
+    [resetTimerClock],
+  );
 
   const goToFeeling = useCallback(() => {
     if (!momentumAwardedRef.current) {
@@ -139,7 +167,27 @@ export function TimerScreen() {
     if (phase !== 'running') {
       return;
     }
-    void scheduleTimerNotification(totalSeconds);
+    const delaySeconds = remainingSecondsFromEndAt(timerClockRef.current.endAtMs);
+    void (async () => {
+      const scheduled = await scheduleTimerNotification(delaySeconds);
+      if (scheduled || notificationAlertShownRef.current) {
+        return;
+      }
+      notificationAlertShownRef.current = true;
+      Alert.alert(
+        '通知がオフです',
+        'タイマー終了の通知を受け取るには、端末の設定で Eskeri の通知をオンにしてください。',
+        [
+          { text: 'あとで', style: 'cancel' },
+          {
+            text: '設定を開く',
+            onPress: () => {
+              void openNotificationSettings();
+            },
+          },
+        ],
+      );
+    })();
   }, [phase, totalSeconds]);
 
   useEffect(() => {
@@ -152,21 +200,38 @@ export function TimerScreen() {
     if (phase !== 'running') {
       return;
     }
-    if (remainingSeconds <= 0) {
-      goToCheckpoint(true);
-      return;
-    }
 
-    const timer = setInterval(() => {
-      setRemainingSeconds((prev) => prev - 1);
-    }, 1000);
+    const tick = () => {
+      const remaining = syncRemainingFromEndAt();
+      if (remaining <= 0 && !timerExpiredRef.current) {
+        timerExpiredRef.current = true;
+        goToCheckpoint(true);
+      }
+    };
 
-    return () => clearInterval(timer);
-  }, [phase, remainingSeconds, goToCheckpoint]);
+    tick();
+
+    const interval = setInterval(tick, 1000);
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      // ロック直前（inactive/background）と復帰（active）の両方で endAt から再計算
+      if (
+        nextState === 'active' ||
+        nextState === 'inactive' ||
+        nextState === 'background'
+      ) {
+        tick();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      appStateSubscription.remove();
+    };
+  }, [phase, syncRemainingFromEndAt, goToCheckpoint]);
 
   if (phase === 'feeling') {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <View style={styles.feelingContainer}>
           <FeelingPicker onSelect={(feeling) => void handleFeelingSelect(feeling)} />
         </View>
@@ -175,7 +240,7 @@ export function TimerScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <View style={styles.container}>
         <Text style={styles.actionTitle}>{title}</Text>
 
