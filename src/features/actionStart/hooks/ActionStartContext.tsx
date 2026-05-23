@@ -8,7 +8,11 @@ import {
   type ReactNode,
 } from 'react';
 
-import { appendActionLog, loadActionLogs } from '../storage/actionLogRepository';
+import {
+  appendActionLog,
+  clearActionLogs,
+  loadActionLogs,
+} from '../storage/actionLogRepository';
 import type { ActionLog, CreateActionLogInput } from '../types/actionLog';
 import { createId } from '../utils/id';
 
@@ -17,6 +21,7 @@ type ActionStartContextValue = {
   loading: boolean;
   saveAction: (input: CreateActionLogInput) => Promise<void>;
   refresh: () => Promise<void>;
+  clearLogs: () => Promise<void>;
 };
 
 const ActionStartContext = createContext<ActionStartContextValue | null>(null);
@@ -40,6 +45,11 @@ export function ActionStartProvider({ children }: { children: ReactNode }) {
     })();
   }, [refresh]);
 
+  const clearLogs = useCallback(async () => {
+    await clearActionLogs();
+    setActionLogs([]);
+  }, []);
+
   const saveAction = useCallback(async (input: CreateActionLogInput) => {
     const log: ActionLog = {
       id: createId(),
@@ -60,8 +70,9 @@ export function ActionStartProvider({ children }: { children: ReactNode }) {
       loading,
       saveAction,
       refresh,
+      clearLogs,
     }),
-    [actionLogs, loading, saveAction, refresh],
+    [actionLogs, loading, saveAction, refresh, clearLogs],
   );
 
   return (

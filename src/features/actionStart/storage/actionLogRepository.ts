@@ -69,6 +69,10 @@ export async function saveActionLogs(logs: ActionLog[]): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEYS.actionLogs, JSON.stringify(logs));
 }
 
+export async function clearActionLogs(): Promise<void> {
+  await saveActionLogs([]);
+}
+
 export async function appendActionLog(log: ActionLog): Promise<ActionLog[]> {
   const current = await loadActionLogs();
   const next = [log, ...current];

@@ -28,6 +28,9 @@ type MomentumContextValue = {
     requiredMomentum: number;
   }) => Promise<boolean>;
   removeReward: (id: string) => Promise<void>;
+  refresh: () => Promise<void>;
+  resetPoints: () => Promise<void>;
+  clearRewards: () => Promise<void>;
 };
 
 const MomentumContext = createContext<MomentumContextValue | null>(null);
@@ -50,6 +53,25 @@ export function MomentumProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     })();
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const [points, storedRewards] = await Promise.all([
+      loadMomentumPoints(),
+      loadRewards(),
+    ]);
+    setMomentumPoints(points);
+    setRewards(storedRewards);
+  }, []);
+
+  const resetPoints = useCallback(async () => {
+    await saveMomentumPoints(0);
+    setMomentumPoints(0);
+  }, []);
+
+  const clearRewards = useCallback(async () => {
+    await saveRewards([]);
+    setRewards([]);
   }, []);
 
   const awardMomentum = useCallback(async (amount: number) => {
@@ -137,6 +159,9 @@ export function MomentumProvider({ children }: { children: ReactNode }) {
       useReward,
       upsertReward,
       removeReward,
+      refresh,
+      resetPoints,
+      clearRewards,
     }),
     [
       momentumPoints,
@@ -146,6 +171,9 @@ export function MomentumProvider({ children }: { children: ReactNode }) {
       useReward,
       upsertReward,
       removeReward,
+      refresh,
+      resetPoints,
+      clearRewards,
     ],
   );
 
