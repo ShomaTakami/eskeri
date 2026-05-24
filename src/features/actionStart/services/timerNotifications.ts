@@ -2,10 +2,15 @@
  * ローカル通知のみ（Push / Expo Push Token は使用しない）。
  * SDK 46 / expo-notifications@0.16
  */
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { Linking } from 'react-native';
 
-import { buildTimerNotificationData } from '../constants/notificationScreens';
+import { STORAGE_KEYS } from '../../../shared/constants/storageKeys';
+import {
+  buildTimerNotificationData,
+  parseTimerNotificationData,
+} from '../constants/notificationScreens';
 import {
   isNotificationUserEnabled,
 } from '../../settings/storage/notificationPreferences';
@@ -45,6 +50,95 @@ export async function openNotificationSettings(): Promise<void> {
 const NOTIFICATION_DEBUG = __DEV__;
 
 let scheduledNotificationId: string | null = null;
+
+type PersistedTimerNotification = {
+  taskId: string;
+  notificationId: string;
+};
+
+async function getPersistedTimerNotification(): Promise<PersistedTimerNotification | null> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.scheduledTimerNotification);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as PersistedTimerNotification;
+    if (
+      typeof parsed.taskId === 'string' &&
+      parsed.taskId.length > 0 &&
+      typeof parsed.notificationId === 'string' &&
+      parsed.notificationId.length > 0
+    ) {
+      return parsed;
+    }
+  } catch (error) {
+    warnNotification('getPersistedTimerNotification failed', error);
+  }
+  return null;
+}
+
+async function setPersistedTimerNotification(
+  taskId: string,
+  notificationId: string,
+): Promise<void> {
+  try {
+    await AsyncStorage.setItem(
+      STORAGE_KEYS.scheduledTimerNotification,
+      JSON.stringify({ taskId, notificationId }),
+    );
+  } catch (error) {
+    warnNotification('setPersistedTimerNotification failed', error);
+  }
+}
+
+async function clearPersistedTimerNotification(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(STORAGE_KEYS.scheduledTimerNotification);
+  } catch (error) {
+    warnNotification('clearPersistedTimerNotification failed', error);
+  }
+}
+
+async function cancelScheduledNotificationById(id: string): Promise<void> {
+  try {
+    await Notifications.cancelScheduledNotificationAsync(id);
+    logNotification('cancelScheduledNotificationAsync', { id });
+  } catch (error) {
+    warnNotification('cancel failed', { id, error });
+  }
+}
+
+async function cancelTimerNotificationsForTask(taskId: string): Promise<void> {
+  const idsToCancel = new Set<string>();
+
+  if (scheduledNotificationId) {
+    idsToCancel.add(scheduledNotificationId);
+  }
+
+  const persisted = await getPersistedTimerNotification();
+  if (persisted?.taskId === taskId) {
+    idsToCancel.add(persisted.notificationId);
+  }
+
+  try {
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    for (const request of scheduled) {
+      const data = parseTimerNotificationData(
+        request.content.data as Record<string, unknown> | undefined,
+      );
+      if (data?.taskId === taskId) {
+        idsToCancel.add(request.identifier);
+      }
+    }
+  } catch (error) {
+    warnNotification('getAllScheduledNotificationsAsync failed (cancel by taskId)', error);
+  }
+
+  await Promise.all([...idsToCancel].map((id) => cancelScheduledNotificationById(id)));
+  scheduledNotificationId = null;
+  await clearPersistedTimerNotification();
+  await logScheduledNotifications('after cancel by taskId');
+}
 let permissionRequested = false;
 let handlerConfigured = false;
 let responseListenerConfigured = false;
@@ -214,24 +308,27 @@ export async function ensureNotificationPermission(): Promise<boolean> {
   return false;
 }
 
-export async function cancelTimerNotification(): Promise<void> {
+export async function cancelTimerNotification(taskId?: string): Promise<void> {
   if (!ENABLE_NOTIFICATIONS) {
     scheduledNotificationId = null;
+    await clearPersistedTimerNotification();
+    return;
+  }
+  if (taskId) {
+    await cancelTimerNotificationsForTask(taskId);
     return;
   }
   if (!scheduledNotificationId) {
+    const persisted = await getPersistedTimerNotification();
+    if (persisted) {
+      await cancelTimerNotificationsForTask(persisted.taskId);
+    }
     return;
   }
-  const id = scheduledNotificationId;
-  try {
-    await Notifications.cancelScheduledNotificationAsync(id);
-    logNotification('cancelScheduledNotificationAsync', { id });
-    await logScheduledNotifications('after cancel');
-  } catch (error) {
-    warnNotification('cancel failed', { id, error });
-  } finally {
-    scheduledNotificationId = null;
-  }
+  await cancelScheduledNotificationById(scheduledNotificationId);
+  scheduledNotificationId = null;
+  await clearPersistedTimerNotification();
+  await logScheduledNotifications('after cancel');
 }
 
 export async function scheduleTimerNotification(
@@ -255,7 +352,7 @@ export async function scheduleTimerNotification(
 
   try {
     await clearScheduledNotificationsBeforeStart();
-    await cancelTimerNotification();
+    await cancelTimerNotificationsForTask(taskId);
 
     const granted = await ensureNotificationPermission();
     if (!granted) {
@@ -283,12 +380,14 @@ export async function scheduleTimerNotification(
     });
 
     scheduledNotificationId = id;
+    await setPersistedTimerNotification(taskId, id);
     logNotification('scheduleNotificationAsync result', { id, delaySeconds, data });
     await logScheduledNotifications('after schedule');
     return true;
   } catch (error) {
     warnNotification('schedule failed', error);
     scheduledNotificationId = null;
+    await clearPersistedTimerNotification();
     return false;
   }
 }

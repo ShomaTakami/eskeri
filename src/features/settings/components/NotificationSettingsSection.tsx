@@ -1,5 +1,5 @@
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   Alert,
   AppState,
@@ -26,15 +26,25 @@ export function NotificationSettingsSection() {
   const [userEnabled, setUserEnabled] = useState(true);
   const [permissionState, setPermissionState] = useState<PermissionState>('loading');
   const [hydrated, setHydrated] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const savingRef = useRef(false);
 
   const refresh = useCallback(async () => {
-    const [enabled, permission] = await Promise.all([
-      isNotificationUserEnabled(),
-      getNotificationPermissionSnapshot(),
-    ]);
-    setUserEnabled(enabled);
-    setPermissionState(permission.granted ? 'granted' : 'denied');
-    setHydrated(true);
+    try {
+      const [enabled, permission] = await Promise.all([
+        isNotificationUserEnabled(),
+        getNotificationPermissionSnapshot(),
+      ]);
+      setUserEnabled(enabled);
+      setPermissionState(permission.granted ? 'granted' : 'denied');
+      setLoadError(false);
+    } catch (error) {
+      console.error('[Settings] notification settings refresh failed', error);
+      setLoadError(true);
+      setPermissionState('denied');
+    } finally {
+      setHydrated(true);
+    }
   }, []);
 
   useFocusEffect(
@@ -55,6 +65,9 @@ export function NotificationSettingsSection() {
   );
 
   const handleToggle = (next: boolean) => {
+    if (savingRef.current) {
+      return;
+    }
     if (next && permissionState === 'denied') {
       Alert.alert(
         '端末で通知をオンにしてください',
@@ -72,9 +85,19 @@ export function NotificationSettingsSection() {
       return;
     }
 
+    const previous = userEnabled;
+    savingRef.current = true;
+    setUserEnabled(next);
     void (async () => {
-      await setNotificationUserEnabled(next);
-      setUserEnabled(next);
+      try {
+        await setNotificationUserEnabled(next);
+      } catch (error) {
+        console.error('[Settings] notification toggle save failed', error);
+        setUserEnabled(previous);
+        Alert.alert('保存に失敗しました', 'もう一度お試しください。');
+      } finally {
+        savingRef.current = false;
+      }
     })();
   };
 
@@ -121,6 +144,12 @@ export function NotificationSettingsSection() {
           {systemStatusLabel}
         </Text>
       </View>
+
+      {loadError ? (
+        <Text style={styles.warning}>
+          設定の読み込みに失敗しました。表示は既定値です。画面を開き直すと再読み込みします。
+        </Text>
+      ) : null}
 
       {userEnabled && permissionState === 'denied' ? (
         <Text style={styles.warning}>

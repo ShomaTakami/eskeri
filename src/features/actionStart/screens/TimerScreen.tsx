@@ -147,17 +147,17 @@ export function TimerScreen() {
   }, []);
 
   const exitWithoutSaving = useCallback(() => {
-    void cancelTimerNotification();
+    void cancelTimerNotification(taskId || undefined);
     void clearActiveTaskSession();
     navigation.reset({
       index: 0,
       routes: [{ name: 'HomeScreen' }],
     });
-  }, [navigation]);
+  }, [navigation, taskId]);
 
   const goToCheckpoint = useCallback(
     (naturalExpiry = false) => {
-      void cancelTimerNotification();
+      void cancelTimerNotification(taskId || undefined);
       setRemainingSeconds(0);
       if (!naturalExpiry) {
         if (onExtensionRef.current) {
@@ -175,7 +175,7 @@ export function TimerScreen() {
       setPhase(nextPhase);
       void persistSession(nextPhase);
     },
-    [exitWithoutSaving, persistSession],
+    [exitWithoutSaving, persistSession, taskId],
   );
 
   const handleEngaged = useCallback(() => {
@@ -200,26 +200,31 @@ export function TimerScreen() {
       setRemainingSeconds(resetTimerClock(seconds));
       setPhase('running');
       timerExpiredRef.current = false;
-      void persistSession('running');
-    void updateActiveTaskSession(taskId, {
-        onExtension: true,
-        phase: 'running',
-        totalSeconds: seconds,
-        segmentStartedAtMs: timerClockRef.current.segmentStartedAtMs,
-        endAtMs: timerClockRef.current.endAtMs,
-      });
+      void saveActiveTaskSession(
+        buildSessionSnapshot({
+          taskId,
+          title,
+          startedAt,
+          heavinessBefore,
+          phase: 'running',
+          onExtension: true,
+          momentumAwarded: momentumAwardedRef.current,
+          timerClock: timerClockRef.current,
+          totalSeconds: seconds,
+        }),
+      );
     },
-    [persistSession, resetTimerClock, taskId],
+    [heavinessBefore, resetTimerClock, startedAt, taskId, title],
   );
 
   const goToFeeling = useCallback(() => {
     if (!momentumAwardedRef.current) {
       return;
     }
-    void cancelTimerNotification();
+    void cancelTimerNotification(taskId || undefined);
     setPhase('feeling');
     void persistSession('feeling');
-  }, [persistSession]);
+  }, [persistSession, taskId]);
 
   const handleFeelingSelect = useCallback(
     async (feelingAfter: number) => {
@@ -228,7 +233,7 @@ export function TimerScreen() {
       }
       savingRef.current = true;
       try {
-        await cancelTimerNotification();
+        await cancelTimerNotification(taskId || undefined);
         const duration = Math.max(
           1,
           Math.round((Date.now() - new Date(startedAt).getTime()) / 1000),
@@ -253,7 +258,7 @@ export function TimerScreen() {
         savingRef.current = false;
       }
     },
-    [heavinessBefore, navigation, saveAction, startedAt, title],
+    [heavinessBefore, navigation, saveAction, startedAt, taskId, title],
   );
 
   useEffect(() => {
@@ -261,56 +266,74 @@ export function TimerScreen() {
       if (route.name !== 'TimerScreen') {
         return;
       }
-      const clock = createTimerClock(INITIAL_TIMER_SECONDS);
-      timerClockRef.current = clock;
-      void saveActiveTaskSession(
-        buildSessionSnapshot({
-          taskId: route.params.taskId,
-          title: route.params.title,
-          startedAt: route.params.startedAt,
-          heavinessBefore: route.params.heavinessBefore,
-          phase: 'running',
-          onExtension: false,
-          momentumAwarded: false,
-          timerClock: clock,
-          totalSeconds: INITIAL_TIMER_SECONDS,
-        }),
-      );
-      setHydrated(true);
+      void (async () => {
+        try {
+          const clock = createTimerClock(INITIAL_TIMER_SECONDS);
+          timerClockRef.current = clock;
+          await saveActiveTaskSession(
+            buildSessionSnapshot({
+              taskId: route.params.taskId,
+              title: route.params.title,
+              startedAt: route.params.startedAt,
+              heavinessBefore: route.params.heavinessBefore,
+              phase: 'running',
+              onExtension: false,
+              momentumAwarded: false,
+              timerClock: clock,
+              totalSeconds: INITIAL_TIMER_SECONDS,
+            }),
+          );
+          setHydrated(true);
+        } catch (error) {
+          console.error('[Timer] initial session save failed', error);
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'HomeScreen' }],
+          });
+        }
+      })();
       return;
     }
 
     void (async () => {
-      const session = await getActiveTaskSession(route.params.taskId);
-      if (!session) {
+      try {
+        const session = await getActiveTaskSession(route.params.taskId);
+        if (!session) {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'HomeScreen' }],
+          });
+          return;
+        }
+
+        setTaskId(session.taskId);
+        setTitle(session.title);
+        setStartedAt(session.startedAt);
+        setHeavinessBefore(session.heavinessBefore);
+        onExtensionRef.current = session.onExtension;
+        momentumAwardedRef.current = session.momentumAwarded;
+        setTotalSeconds(session.totalSeconds);
+        timerClockRef.current = {
+          segmentStartedAtMs: session.segmentStartedAtMs,
+          endAtMs: session.endAtMs,
+        };
+
+        const nextPhase = resolvePhaseAfterTimerEnd(session);
+        timerExpiredRef.current = nextPhase !== 'running';
+        setPhase(nextPhase);
+        setRemainingSeconds(
+          nextPhase === 'running'
+            ? remainingSecondsFromTimerClock(timerClockRef.current)
+            : 0,
+        );
+        setHydrated(true);
+      } catch (error) {
+        console.error('[Timer] session restore failed', error);
         navigation.reset({
           index: 0,
           routes: [{ name: 'HomeScreen' }],
         });
-        return;
       }
-
-      setTaskId(session.taskId);
-      setTitle(session.title);
-      setStartedAt(session.startedAt);
-      setHeavinessBefore(session.heavinessBefore);
-      onExtensionRef.current = session.onExtension;
-      momentumAwardedRef.current = session.momentumAwarded;
-      setTotalSeconds(session.totalSeconds);
-      timerClockRef.current = {
-        segmentStartedAtMs: session.segmentStartedAtMs,
-        endAtMs: session.endAtMs,
-      };
-
-      const nextPhase = resolvePhaseAfterTimerEnd(session);
-      timerExpiredRef.current = nextPhase !== 'running';
-      setPhase(nextPhase);
-      setRemainingSeconds(
-        nextPhase === 'running'
-          ? remainingSecondsFromTimerClock(timerClockRef.current)
-          : 0,
-      );
-      setHydrated(true);
     })();
   }, [isTaskCompleteEntry, navigation, route]);
 

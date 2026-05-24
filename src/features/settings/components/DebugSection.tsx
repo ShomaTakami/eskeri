@@ -103,7 +103,7 @@ export function DebugSection() {
           初回タイマー: {INITIAL_TIMER_SECONDS} 秒（本番は 300 秒）
         </Text>
         <Text style={styles.notificationMeta}>
-          granted:false のとき → 設定 → アプリ → Eskeri → 通知をオン（SDK46 は権限ダイアログなし）
+          granted:false のとき → 設定 → アプリ → Eskeri → 通知をオン（Android では expo-notifications 0.16.x は権限ダイアログを出さないため、端末設定から有効化が必要）
         </Text>
         {NOTIFICATION_VERIFICATION_SCENARIOS.map((scenario) => (
           <View key={scenario.id} style={styles.scenarioRow}>

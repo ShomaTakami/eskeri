@@ -11,9 +11,12 @@ export type TimerClock = {
 
 export function createTimerClock(durationSeconds: number): TimerClock {
   const segmentStartedAtMs = Date.now();
+  const normalizedSeconds = Number.isFinite(durationSeconds)
+    ? Math.max(0, durationSeconds)
+    : 0;
   return {
     segmentStartedAtMs,
-    endAtMs: segmentStartedAtMs + Math.max(0, durationSeconds) * 1000,
+    endAtMs: segmentStartedAtMs + normalizedSeconds * 1000,
   };
 }
 
