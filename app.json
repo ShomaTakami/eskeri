@@ -6,6 +6,11 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "backgroundColor": "#f8f9fb",
+    "androidNavigationBar": {
+      "backgroundColor": "#f8f9fb",
+      "barStyle": "dark-content"
+    },
     "ios": {
       "supportsTablet": true
     },
@@ -16,10 +21,25 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.shomatakami.eskeri"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#111827"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ddc9a632-be97-4460-b839-b275f6634374"
+      }
     }
   }
 }

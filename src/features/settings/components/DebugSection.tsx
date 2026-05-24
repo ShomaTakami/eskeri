@@ -1,5 +1,11 @@
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { INITIAL_TIMER_SECONDS } from '../../actionStart/constants/timer';
+import {
+  dumpNotificationDebugState,
+  NOTIFICATION_VERIFICATION_SCENARIOS,
+  openNotificationSettings,
+} from '../../actionStart/services/timerNotifications';
 import { useActionStart } from '../../actionStart/hooks/ActionStartContext';
 import { useMomentum } from '../../momentum/hooks/MomentumContext';
 import {
@@ -51,6 +57,17 @@ export function DebugSection() {
         await refreshMomentum();
       },
     },
+    {
+      label: '通知デバッグをログ出力',
+      message:
+        'Metro / Logcat に [notifications] ログを出力しました。予約一覧と権限を確認してください。',
+      run: dumpNotificationDebugState,
+    },
+    {
+      label: '通知の設定を開く',
+      message: '端末の Eskeri 設定画面を開きました。通知をオンにしてください。',
+      run: openNotificationSettings,
+    },
   ];
 
   const handlePress = (action: DebugAction) => {
@@ -80,6 +97,21 @@ export function DebugSection() {
   return (
     <View style={styles.section}>
       <Text style={styles.sectionLabel}>Debug</Text>
+      <View style={styles.notificationBlock}>
+        <Text style={styles.notificationTitle}>通知検証（開発ビルド）</Text>
+        <Text style={styles.notificationMeta}>
+          初回タイマー: {INITIAL_TIMER_SECONDS} 秒（本番は 300 秒）
+        </Text>
+        <Text style={styles.notificationMeta}>
+          granted:false のとき → 設定 → アプリ → Eskeri → 通知をオン（Android では expo-notifications 0.16.x は権限ダイアログを出さないため、端末設定から有効化が必要）
+        </Text>
+        {NOTIFICATION_VERIFICATION_SCENARIOS.map((scenario) => (
+          <View key={scenario.id} style={styles.scenarioRow}>
+            <Text style={styles.scenarioLabel}>{scenario.label}</Text>
+            <Text style={styles.scenarioHint}>{scenario.hint}</Text>
+          </View>
+        ))}
+      </View>
       <View style={styles.actions}>
         {actions.map((action) => (
           <Pressable
@@ -108,6 +140,35 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     marginBottom: 12,
     letterSpacing: 0.5,
+  },
+  notificationBlock: {
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: '#f3f4f6',
+    gap: 8,
+  },
+  notificationTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  notificationMeta: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  scenarioRow: {
+    gap: 2,
+  },
+  scenarioLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  scenarioHint: {
+    fontSize: 12,
+    color: '#6b7280',
+    lineHeight: 17,
   },
   actions: {
     gap: 10,

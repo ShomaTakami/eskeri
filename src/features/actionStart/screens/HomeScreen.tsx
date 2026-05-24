@@ -14,6 +14,7 @@ import type { StartStackParamList } from '../../../navigation/types';
 import { ScreenLayout } from '../../../shared/components/ScreenLayout';
 import { ACCENT } from '../../../shared/theme/colors';
 import { HeavinessPicker } from '../components/HeavinessPicker';
+import { createTaskId } from '../utils/createTaskId';
 
 const PLACEHOLDER_EXAMPLES = [
   '勉強',
@@ -44,6 +45,7 @@ export function HomeScreen() {
     Keyboard.dismiss();
     setError('');
     navigation.navigate('TimerScreen', {
+      taskId: createTaskId(),
       title: trimmed,
       startedAt: new Date().toISOString(),
       heavinessBefore: heaviness,
