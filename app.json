@@ -1,12 +1,17 @@
 {
   "expo": {
-    "name": "eskeri",
+    "name": "エスケリ",
     "slug": "eskeri",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/eskeri-icon/app-icon.png",
     "userInterfaceStyle": "light",
     "backgroundColor": "#f8f9fb",
+    "splash": {
+      "image": "./assets/eskeri-icon/app-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f8f9fb"
+    },
     "androidNavigationBar": {
       "backgroundColor": "#f8f9fb",
       "barStyle": "dark-content"
@@ -16,10 +21,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/eskeri-icon/app-icon.png",
+        "backgroundColor": "#f8f9fb"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.shomatakami.eskeri"
@@ -31,7 +34,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
+          "icon": "./assets/eskeri-icon/app-icon.png",
           "color": "#111827"
         }
       ]

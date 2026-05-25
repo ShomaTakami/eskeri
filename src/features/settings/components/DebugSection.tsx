@@ -1,6 +1,6 @@
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { INITIAL_TIMER_SECONDS } from '../../actionStart/constants/timer';
+import { INITIAL_TIMER_SECONDS, getTimerBuildMode } from '../../actionStart/constants/timer';
 import {
   dumpNotificationDebugState,
   NOTIFICATION_VERIFICATION_SCENARIOS,
@@ -12,6 +12,7 @@ import {
   debugClearAllData,
   debugResetOnboarding,
 } from '../../../shared/debug/clearAppData';
+import { NotificationDebugPanel } from './NotificationDebugPanel';
 
 type DebugAction = {
   label: string;
@@ -23,11 +24,7 @@ export function DebugSection() {
   const { clearLogs, refresh: refreshLogs } = useActionStart();
   const { resetPoints, refresh: refreshMomentum } = useMomentum();
 
-  if (!__DEV__) {
-    return null;
-  }
-
-  const actions: DebugAction[] = [
+  const devActions: DebugAction[] = [
     {
       label: 'Onboarding初期化',
       message:
@@ -60,12 +57,12 @@ export function DebugSection() {
     {
       label: '通知デバッグをログ出力',
       message:
-        'Metro / Logcat に [notifications] ログを出力しました。予約一覧と権限を確認してください。',
+        'Logcat に [notifications] ログを出力しました。予約一覧と権限を確認してください。',
       run: dumpNotificationDebugState,
     },
     {
       label: '通知の設定を開く',
-      message: '端末の Eskeri 設定画面を開きました。通知をオンにしてください。',
+      message: '端末の エスケリ 設定画面を開きました。通知をオンにしてください。',
       run: openNotificationSettings,
     },
   ];
@@ -97,13 +94,14 @@ export function DebugSection() {
   return (
     <View style={styles.section}>
       <Text style={styles.sectionLabel}>Debug</Text>
+      <NotificationDebugPanel />
       <View style={styles.notificationBlock}>
-        <Text style={styles.notificationTitle}>通知検証（開発ビルド）</Text>
+        <Text style={styles.notificationTitle}>通知検証チェックリスト</Text>
         <Text style={styles.notificationMeta}>
-          初回タイマー: {INITIAL_TIMER_SECONDS} 秒（本番は 300 秒）
+          初回タイマー: {INITIAL_TIMER_SECONDS} 秒（mode: {getTimerBuildMode()}）
         </Text>
         <Text style={styles.notificationMeta}>
-          granted:false のとき → 設定 → アプリ → Eskeri → 通知をオン（Android では expo-notifications 0.16.x は権限ダイアログを出さないため、端末設定から有効化が必要）
+          granted:false のとき → 設定 → アプリ → エスケリ → 通知をオン（Android では expo-notifications 0.16.x は権限ダイアログを出さないため、端末設定から有効化が必要）
         </Text>
         {NOTIFICATION_VERIFICATION_SCENARIOS.map((scenario) => (
           <View key={scenario.id} style={styles.scenarioRow}>
@@ -112,17 +110,19 @@ export function DebugSection() {
           </View>
         ))}
       </View>
-      <View style={styles.actions}>
-        {actions.map((action) => (
-          <Pressable
-            key={action.label}
-            style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-            onPress={() => handlePress(action)}
-          >
-            <Text style={styles.buttonLabel}>{action.label}</Text>
-          </Pressable>
-        ))}
-      </View>
+      {__DEV__ ? (
+        <View style={styles.actions}>
+          {devActions.map((action) => (
+            <Pressable
+              key={action.label}
+              style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+              onPress={() => handlePress(action)}
+            >
+              <Text style={styles.buttonLabel}>{action.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }

@@ -11,7 +11,7 @@ type HeavinessPickerProps = {
 export function HeavinessPicker({ value, onChange }: HeavinessPickerProps) {
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>今どれくらい重い？</Text>
+      <Text style={styles.label}>今、この行動の重さはどのくらいですか？</Text>
       <View style={styles.row}>
         {SCALE_VALUES.map((n) => {
           const selected = value === n;

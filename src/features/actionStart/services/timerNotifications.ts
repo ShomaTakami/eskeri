@@ -4,7 +4,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
-import { Linking } from 'react-native';
+import { Linking, Platform } from 'react-native';
 
 import { STORAGE_KEYS } from '../../../shared/constants/storageKeys';
 import {
@@ -19,12 +19,36 @@ import {
 } from '../../../navigation/notificationNavigation';
 
 export const ENABLE_NOTIFICATIONS = true;
+export const DEFAULT_NOTIFICATION_CHANNEL_ID = 'default';
 
 export type NotificationPermissionSnapshot = {
   granted: boolean;
   status: string;
   canAskAgain: boolean;
   needsSettings: boolean;
+};
+
+export type NotificationDebugSnapshot = {
+  permission: NotificationPermissionSnapshot | null;
+  channelConfigured: boolean;
+  channels: {
+    id: string;
+    name: string | null;
+    importance: number;
+  }[];
+  lastScheduledNotificationId: string | null;
+  persistedNotification: {
+    taskId: string;
+    notificationId: string;
+  } | null;
+  scheduledNotifications: {
+    id: string;
+    title: string | null;
+    body: string | null;
+    channelId: string | null;
+    trigger: unknown;
+  }[];
+  lastError: string | null;
 };
 
 export async function getNotificationPermissionSnapshot(): Promise<NotificationPermissionSnapshot> {
@@ -43,18 +67,64 @@ export async function openNotificationSettings(): Promise<void> {
     await Linking.openSettings();
     logNotification('Linking.openSettings() called');
   } catch (error) {
-    warnNotification('Linking.openSettings() failed', error);
+    recordNotificationError('Linking.openSettings() failed', error);
   }
 }
 
-const NOTIFICATION_DEBUG = __DEV__;
+const NOTIFICATION_VERBOSE_DEBUG = __DEV__;
 
 let scheduledNotificationId: string | null = null;
+let channelConfigured = false;
+let lastNotificationError: string | null = null;
+let cachedDebugSnapshot: NotificationDebugSnapshot | null = null;
+let scheduleOperation: Promise<unknown> = Promise.resolve();
+
+function enqueueScheduleOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const next = scheduleOperation.then(operation, operation);
+  scheduleOperation = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
 
 type PersistedTimerNotification = {
   taskId: string;
   notificationId: string;
 };
+
+function recordNotificationError(context: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  lastNotificationError = `${context}: ${message}`;
+  warnNotification(context, error);
+}
+
+function logNotification(message: string, payload?: unknown): void {
+  if (payload !== undefined) {
+    console.warn(`[notifications] ${message}`, payload);
+  } else {
+    console.warn(`[notifications] ${message}`);
+  }
+}
+
+function logNotificationVerbose(message: string, payload?: unknown): void {
+  if (!NOTIFICATION_VERBOSE_DEBUG) {
+    return;
+  }
+  if (payload !== undefined) {
+    console.log(`[notifications] ${message}`, payload);
+  } else {
+    console.log(`[notifications] ${message}`);
+  }
+}
+
+function warnNotification(message: string, payload?: unknown): void {
+  if (payload !== undefined) {
+    console.warn(`[notifications] ${message}`, payload);
+  } else {
+    console.warn(`[notifications] ${message}`);
+  }
+}
 
 async function getPersistedTimerNotification(): Promise<PersistedTimerNotification | null> {
   try {
@@ -72,7 +142,7 @@ async function getPersistedTimerNotification(): Promise<PersistedTimerNotificati
       return parsed;
     }
   } catch (error) {
-    warnNotification('getPersistedTimerNotification failed', error);
+    recordNotificationError('getPersistedTimerNotification failed', error);
   }
   return null;
 }
@@ -87,7 +157,7 @@ async function setPersistedTimerNotification(
       JSON.stringify({ taskId, notificationId }),
     );
   } catch (error) {
-    warnNotification('setPersistedTimerNotification failed', error);
+    recordNotificationError('setPersistedTimerNotification failed', error);
   }
 }
 
@@ -95,8 +165,115 @@ async function clearPersistedTimerNotification(): Promise<void> {
   try {
     await AsyncStorage.removeItem(STORAGE_KEYS.scheduledTimerNotification);
   } catch (error) {
-    warnNotification('clearPersistedTimerNotification failed', error);
+    recordNotificationError('clearPersistedTimerNotification failed', error);
   }
+}
+
+function extractChannelIdFromTrigger(trigger: unknown): string | null {
+  if (!trigger || typeof trigger !== 'object') {
+    return null;
+  }
+  const channelId = (trigger as { channelId?: unknown }).channelId;
+  return typeof channelId === 'string' ? channelId : null;
+}
+
+async function readNotificationChannels(): Promise<NotificationDebugSnapshot['channels']> {
+  if (Platform.OS !== 'android') {
+    return [];
+  }
+  try {
+    const channels = await Notifications.getNotificationChannelsAsync();
+    logNotification('getNotificationChannelsAsync', channels);
+    return channels.map((channel) => ({
+      id: channel.id,
+      name: channel.name,
+      importance: channel.importance,
+    }));
+  } catch (error) {
+    recordNotificationError('getNotificationChannelsAsync failed', error);
+    return [];
+  }
+}
+
+async function readScheduledNotifications(): Promise<
+  NotificationDebugSnapshot['scheduledNotifications']
+> {
+  try {
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    logNotification('getAllScheduledNotificationsAsync', scheduled);
+    return scheduled.map((request) => ({
+      id: request.identifier,
+      title: request.content.title,
+      body: request.content.body,
+      channelId: extractChannelIdFromTrigger(request.trigger),
+      trigger: request.trigger,
+    }));
+  } catch (error) {
+    recordNotificationError('getAllScheduledNotificationsAsync failed', error);
+    return [];
+  }
+}
+
+export async function ensureAndroidNotificationChannel(): Promise<void> {
+  if (!ENABLE_NOTIFICATIONS || Platform.OS !== 'android') {
+    return;
+  }
+  if (channelConfigured) {
+    return;
+  }
+
+  try {
+    const channel = await Notifications.setNotificationChannelAsync(
+      DEFAULT_NOTIFICATION_CHANNEL_ID,
+      {
+        name: 'タイマー通知',
+        importance: Notifications.AndroidImportance.MAX,
+        sound: 'default',
+        enableVibrate: true,
+        vibrationPattern: [0, 250, 250, 250],
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: false,
+        showBadge: true,
+      },
+    );
+    channelConfigured = true;
+    logNotification('setNotificationChannelAsync', {
+      channelId: DEFAULT_NOTIFICATION_CHANNEL_ID,
+      channel,
+    });
+    await readNotificationChannels();
+  } catch (error) {
+    recordNotificationError('setNotificationChannelAsync failed', error);
+  }
+}
+
+export async function getNotificationDebugSnapshot(): Promise<NotificationDebugSnapshot> {
+  if (cachedDebugSnapshot) {
+    return cachedDebugSnapshot;
+  }
+
+  let permission: NotificationPermissionSnapshot | null = null;
+  try {
+    permission = await getNotificationPermissionSnapshot();
+  } catch (error) {
+    recordNotificationError('getNotificationDebugSnapshot permission failed', error);
+  }
+
+  cachedDebugSnapshot = {
+    permission,
+    channelConfigured,
+    channels: await readNotificationChannels(),
+    lastScheduledNotificationId: scheduledNotificationId,
+    persistedNotification: await getPersistedTimerNotification(),
+    scheduledNotifications: await readScheduledNotifications(),
+    lastError: lastNotificationError,
+  };
+  return cachedDebugSnapshot;
+}
+
+export async function refreshNotificationDebugState(): Promise<NotificationDebugSnapshot> {
+  cachedDebugSnapshot = null;
+  return getNotificationDebugSnapshot();
 }
 
 async function cancelScheduledNotificationById(id: string): Promise<void> {
@@ -104,7 +281,7 @@ async function cancelScheduledNotificationById(id: string): Promise<void> {
     await Notifications.cancelScheduledNotificationAsync(id);
     logNotification('cancelScheduledNotificationAsync', { id });
   } catch (error) {
-    warnNotification('cancel failed', { id, error });
+    recordNotificationError('cancelScheduledNotificationAsync failed', error);
   }
 }
 
@@ -131,52 +308,27 @@ async function cancelTimerNotificationsForTask(taskId: string): Promise<void> {
       }
     }
   } catch (error) {
-    warnNotification('getAllScheduledNotificationsAsync failed (cancel by taskId)', error);
+    recordNotificationError('getAllScheduledNotificationsAsync failed (cancel by taskId)', error);
   }
 
   await Promise.all([...idsToCancel].map((id) => cancelScheduledNotificationById(id)));
   scheduledNotificationId = null;
   await clearPersistedTimerNotification();
-  await logScheduledNotifications('after cancel by taskId');
+  cachedDebugSnapshot = null;
 }
+
 let permissionRequested = false;
 let handlerConfigured = false;
 let responseListenerConfigured = false;
 let debugListenersConfigured = false;
 let initialResponseHandled = false;
 
-function logNotification(message: string, payload?: unknown): void {
-  if (!NOTIFICATION_DEBUG) {
-    return;
-  }
-  if (payload !== undefined) {
-    console.log(`[notifications] ${message}`, payload);
-  } else {
-    console.log(`[notifications] ${message}`);
-  }
-}
-
-function warnNotification(message: string, payload?: unknown): void {
-  if (payload !== undefined) {
-    console.warn(`[notifications] ${message}`, payload);
-  } else {
-    console.warn(`[notifications] ${message}`);
-  }
-}
-
 async function logScheduledNotifications(context: string): Promise<void> {
   if (!ENABLE_NOTIFICATIONS) {
     return;
   }
-  try {
-    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    logNotification(`getAllScheduledNotificationsAsync (${context})`, scheduled);
-  } catch (error) {
-    warnNotification(
-      `getAllScheduledNotificationsAsync failed (${context})`,
-      error,
-    );
-  }
+  await readScheduledNotifications();
+  logNotificationVerbose(`scheduled notifications (${context})`);
 }
 
 async function clearScheduledNotificationsBeforeStart(): Promise<void> {
@@ -186,10 +338,10 @@ async function clearScheduledNotificationsBeforeStart(): Promise<void> {
   try {
     await Notifications.cancelAllScheduledNotificationsAsync();
     scheduledNotificationId = null;
-    logNotification('cancelAllScheduledNotificationsAsync (dev, before schedule)');
+    logNotificationVerbose('cancelAllScheduledNotificationsAsync (dev, before schedule)');
     await logScheduledNotifications('after cancelAll');
   } catch (error) {
-    warnNotification('cancelAllScheduledNotificationsAsync failed', error);
+    recordNotificationError('cancelAllScheduledNotificationsAsync failed', error);
   }
 }
 
@@ -210,13 +362,14 @@ function configureNotificationHandler(): void {
         shouldShowAlert: true,
         shouldPlaySound: true,
         shouldSetBadge: false,
+        priority: Notifications.AndroidNotificationPriority.MAX,
       };
     },
     handleSuccess: (notificationId) => {
-      logNotification('handleSuccess', { notificationId });
+      logNotificationVerbose('handleSuccess', { notificationId });
     },
     handleError: (notificationId, error) => {
-      warnNotification('handleError', { notificationId, error });
+      recordNotificationError(`handleError (${notificationId})`, error);
     },
   });
 }
@@ -237,26 +390,27 @@ function configureNotificationResponseListener(): void {
 }
 
 function configureDebugListeners(): void {
-  if (!NOTIFICATION_DEBUG || !ENABLE_NOTIFICATIONS || debugListenersConfigured) {
+  if (!NOTIFICATION_VERBOSE_DEBUG || !ENABLE_NOTIFICATIONS || debugListenersConfigured) {
     return;
   }
   debugListenersConfigured = true;
 
   Notifications.addNotificationReceivedListener((notification) => {
-    logNotification('addNotificationReceivedListener', {
+    logNotificationVerbose('addNotificationReceivedListener', {
       id: notification.request.identifier,
       data: notification.request.content.data,
     });
   });
 }
 
-export function initializeNotifications(): void {
+export async function initializeNotifications(): Promise<void> {
   if (!ENABLE_NOTIFICATIONS) {
     return;
   }
   configureNotificationHandler();
   configureNotificationResponseListener();
   configureDebugListeners();
+  await ensureAndroidNotificationChannel();
 }
 
 /** 通知タップでコールドスタートしたとき */
@@ -275,7 +429,7 @@ export async function handleInitialNotificationResponse(): Promise<void> {
     });
     await handleNotificationResponse(response);
   } catch (error) {
-    warnNotification('getLastNotificationResponseAsync failed', error);
+    recordNotificationError('getLastNotificationResponseAsync failed', error);
   }
 }
 
@@ -284,6 +438,7 @@ export async function ensureNotificationPermission(): Promise<boolean> {
     return false;
   }
   configureNotificationHandler();
+  await ensureAndroidNotificationChannel();
 
   const current = await Notifications.getPermissionsAsync();
   logNotification('getPermissionsAsync', current);
@@ -312,6 +467,7 @@ export async function cancelTimerNotification(taskId?: string): Promise<void> {
   if (!ENABLE_NOTIFICATIONS) {
     scheduledNotificationId = null;
     await clearPersistedTimerNotification();
+    cachedDebugSnapshot = null;
     return;
   }
   if (taskId) {
@@ -328,12 +484,34 @@ export async function cancelTimerNotification(taskId?: string): Promise<void> {
   await cancelScheduledNotificationById(scheduledNotificationId);
   scheduledNotificationId = null;
   await clearPersistedTimerNotification();
+  cachedDebugSnapshot = null;
   await logScheduledNotifications('after cancel');
 }
 
-export async function scheduleTimerNotification(
+function buildTimerNotificationContent(options: {
+  actionTitle?: string;
+  isExtension?: boolean;
+}): { title: string; body: string } {
+  const actionTitle = options.actionTitle?.trim() || 'アクション';
+  if (options.isExtension) {
+    return {
+      title: '追加時間が終わりました',
+      body: `「${actionTitle}」を終えて、記録しましょう。タップで完了画面へ`,
+    };
+  }
+  return {
+    title: 'タイマーが終わりました',
+    body: `「${actionTitle}」の時間です。タップして次へ進みましょう`,
+  };
+}
+
+async function scheduleTimerNotificationInternal(
   taskId: string,
-  seconds: number,
+  endAtMs: number,
+  options?: {
+    actionTitle?: string;
+    isExtension?: boolean;
+  },
 ): Promise<boolean> {
   if (!ENABLE_NOTIFICATIONS) {
     return false;
@@ -345,14 +523,21 @@ export async function scheduleTimerNotification(
     return false;
   }
 
-  const delaySeconds = Math.max(1, Math.ceil(seconds));
-  if (delaySeconds <= 0) {
+  const delayMs = endAtMs - Date.now();
+  if (delayMs <= 0) {
+    logNotification('schedule skipped: endAtMs is in the past', {
+      endAtMs,
+      now: Date.now(),
+    });
     return false;
   }
+
+  const delaySeconds = Math.max(1, Math.ceil(delayMs / 1000));
 
   try {
     await clearScheduledNotificationsBeforeStart();
     await cancelTimerNotificationsForTask(taskId);
+    await ensureAndroidNotificationChannel();
 
     const granted = await ensureNotificationPermission();
     if (!granted) {
@@ -361,35 +546,71 @@ export async function scheduleTimerNotification(
     }
 
     const data = buildTimerNotificationData(taskId);
+    const { title: notificationTitle, body: notificationBody } =
+      buildTimerNotificationContent({
+        actionTitle: options?.actionTitle,
+        isExtension: options?.isExtension,
+      });
+    const triggerDate = new Date(endAtMs);
 
     logNotification('scheduleNotificationAsync request', {
+      endAtMs,
+      triggerDate: triggerDate.toISOString(),
       delaySeconds,
+      channelId: DEFAULT_NOTIFICATION_CHANNEL_ID,
+      notificationTitle,
+      notificationBody,
+      isExtension: options?.isExtension ?? false,
       data,
     });
 
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Eskeri',
-        body: '終了',
-        sound: true,
+        title: notificationTitle,
+        body: notificationBody,
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority.MAX,
         data,
       },
       trigger: {
-        seconds: delaySeconds,
+        date: triggerDate,
+        channelId: DEFAULT_NOTIFICATION_CHANNEL_ID,
       },
     });
 
     scheduledNotificationId = id;
     await setPersistedTimerNotification(taskId, id);
-    logNotification('scheduleNotificationAsync result', { id, delaySeconds, data });
+    cachedDebugSnapshot = null;
+    logNotification('scheduleNotificationAsync result', {
+      id,
+      endAtMs,
+      triggerDate: triggerDate.toISOString(),
+      delaySeconds,
+      channelId: DEFAULT_NOTIFICATION_CHANNEL_ID,
+      data,
+    });
     await logScheduledNotifications('after schedule');
     return true;
   } catch (error) {
-    warnNotification('schedule failed', error);
+    recordNotificationError('schedule failed', error);
     scheduledNotificationId = null;
     await clearPersistedTimerNotification();
+    cachedDebugSnapshot = null;
     return false;
   }
+}
+
+export async function scheduleTimerNotification(
+  taskId: string,
+  endAtMs: number,
+  options?: {
+    actionTitle?: string;
+    isExtension?: boolean;
+  },
+): Promise<boolean> {
+  return enqueueScheduleOperation(() =>
+    scheduleTimerNotificationInternal(taskId, endAtMs, options),
+  );
 }
 
 export async function dumpNotificationDebugState(): Promise<void> {
@@ -397,19 +618,19 @@ export async function dumpNotificationDebugState(): Promise<void> {
     warnNotification('notifications disabled (ENABLE_NOTIFICATIONS=false)');
     return;
   }
-  configureNotificationHandler();
+  await initializeNotifications();
   logNotification('--- dump start ---');
   try {
-    const snapshot = await getNotificationPermissionSnapshot();
-    logNotification('permission snapshot', snapshot);
+    const snapshot = await refreshNotificationDebugState();
+    logNotification('permission snapshot', snapshot.permission);
     const current = await Notifications.getPermissionsAsync();
-    logNotification('getPermissionsAsync', current);
+    logNotification('getPermissionsAsync (dump)', current);
     if (!current.granted) {
       const requested = await Notifications.requestPermissionsAsync();
       logNotification('requestPermissionsAsync (dump)', requested);
     }
   } catch (error) {
-    warnNotification('permission dump failed', error);
+    recordNotificationError('permission dump failed', error);
   }
   logNotification('scheduledNotificationId (in-memory)', scheduledNotificationId);
   await logScheduledNotifications('dump');

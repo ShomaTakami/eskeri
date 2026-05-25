@@ -56,9 +56,9 @@ export function HomeScreen() {
 
   return (
     <ScreenLayout
-      appName="Eskeri"
-      title="今日、何を始める？"
-      subtitle="考えすぎる前に、始めよう。"
+      appName="エスケリ"
+      title="今、何に取り組みますか？"
+      subtitle="考えすぎる前に、始めてみましょう。"
       showMomentum
     >
       <View style={styles.form}>

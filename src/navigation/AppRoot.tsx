@@ -61,9 +61,9 @@ export function AppRoot() {
   }
 
   const handleNavigationReady = () => {
-    initializeNotifications();
-    flushPendingNotificationNavigation();
     void (async () => {
+      await initializeNotifications();
+      flushPendingNotificationNavigation();
       await handleInitialNotificationResponse();
       await resumeActiveTaskIfNeeded();
     })();

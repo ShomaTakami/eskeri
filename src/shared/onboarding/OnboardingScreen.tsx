@@ -46,7 +46,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         <View style={styles.content}>
           {page === 0 ? (
             <View style={styles.page}>
-              <Text style={styles.brand}>Eskeri</Text>
+              <Text style={styles.brand}>エスケリ</Text>
               <Text style={styles.tagline}>
                 Think less.{'\n'}Start now.
               </Text>

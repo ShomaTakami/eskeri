@@ -157,7 +157,11 @@ export function TimerScreen() {
 
   const goToCheckpoint = useCallback(
     (naturalExpiry = false) => {
-      void cancelTimerNotification(taskId || undefined);
+      const shouldCancelNotification =
+        !naturalExpiry || AppState.currentState === 'active';
+      if (shouldCancelNotification) {
+        void cancelTimerNotification(taskId || undefined);
+      }
       setRemainingSeconds(0);
       if (!naturalExpiry) {
         if (onExtensionRef.current) {
@@ -341,16 +345,22 @@ export function TimerScreen() {
     if (!hydrated || phase !== 'running' || !taskId) {
       return;
     }
-    const delaySeconds = remainingSecondsFromEndAt(timerClockRef.current.endAtMs);
+
+    const endAtMs = timerClockRef.current.endAtMs;
+    let disposed = false;
+
     void (async () => {
-      const scheduled = await scheduleTimerNotification(taskId, delaySeconds);
-      if (scheduled || notificationAlertShownRef.current) {
+      const scheduled = await scheduleTimerNotification(taskId, endAtMs, {
+        actionTitle: title,
+        isExtension: onExtensionRef.current,
+      });
+      if (disposed || scheduled || notificationAlertShownRef.current) {
         return;
       }
       notificationAlertShownRef.current = true;
       Alert.alert(
         '通知がオフです',
-        'タイマー終了の通知を受け取るには、端末の設定で Eskeri の通知をオンにしてください。',
+        'タイマー終了の通知を受け取るには、端末の設定で エスケリ の通知をオンにしてください。',
         [
           { text: 'あとで', style: 'cancel' },
           {
@@ -362,7 +372,11 @@ export function TimerScreen() {
         ],
       );
     })();
-  }, [hydrated, phase, taskId, totalSeconds]);
+
+    return () => {
+      disposed = true;
+    };
+  }, [hydrated, phase, taskId, title, totalSeconds]);
 
   useEffect(() => {
     if (!hydrated || phase !== 'running') {
@@ -440,7 +454,7 @@ export function TimerScreen() {
             ]}
             onPress={() => goToCheckpoint(false)}
           >
-            <Text style={styles.endLabel}>終わる</Text>
+            <Text style={styles.endLabel}>終了</Text>
           </Pressable>
         ) : null}
 
@@ -449,6 +463,7 @@ export function TimerScreen() {
             <Pressable
               style={({ pressed }) => [
                 styles.endButton,
+                styles.startCheckpointPrimaryButton,
                 { backgroundColor: ACCENT },
                 pressed && styles.pressed,
               ]}
@@ -465,7 +480,7 @@ export function TimerScreen() {
               onPress={handleStartCheckpointEnd}
             >
               <Text style={[styles.secondaryLabel, { color: ACCENT }]}>
-                終わる
+                終了
               </Text>
             </Pressable>
           </View>
@@ -481,24 +496,30 @@ export function TimerScreen() {
               ]}
               onPress={goToFeeling}
             >
-              <Text style={styles.endLabel}>終わる</Text>
+              <Text style={styles.endLabel}>終了</Text>
             </Pressable>
-            <View style={styles.extensionGrid}>
-              {EXTENSION_MINUTES.map((minutes) => (
-                <Pressable
-                  key={minutes}
-                  style={({ pressed }) => [
-                    styles.extensionButton,
-                    { borderColor: ACCENT },
-                    pressed && styles.pressed,
-                  ]}
-                  onPress={() => startExtension(minutes)}
-                >
-                  <Text style={[styles.extensionLabel, { color: ACCENT }]}>
-                    +{minutes}
-                  </Text>
-                </Pressable>
-              ))}
+            <View style={styles.extensionSection}>
+              <Text style={styles.extensionHeading}>もう少し取り組みたい場合</Text>
+              <Text style={styles.extensionHint}>
+                追加で取り組む時間を選んでください。終了時にお知らせします。
+              </Text>
+              <View style={styles.extensionGrid}>
+                {EXTENSION_MINUTES.map((minutes) => (
+                  <Pressable
+                    key={minutes}
+                    style={({ pressed }) => [
+                      styles.extensionButton,
+                      { borderColor: ACCENT },
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() => startExtension(minutes)}
+                  >
+                    <Text style={[styles.extensionLabel, { color: ACCENT }]}>
+                      +{minutes}分
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
           </View>
         ) : null}
@@ -565,7 +586,10 @@ const styles = StyleSheet.create({
   startCheckpointActions: {
     width: '100%',
     marginTop: 40,
-    gap: 12,
+    gap: 24,
+  },
+  startCheckpointPrimaryButton: {
+    marginTop: 0,
   },
   secondaryButton: {
     width: '100%',
@@ -583,6 +607,23 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: 40,
     gap: 16,
+  },
+  extensionSection: {
+    width: '100%',
+    gap: 10,
+    paddingTop: 4,
+  },
+  extensionHeading: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+    textAlign: 'center',
+  },
+  extensionHint: {
+    fontSize: 14,
+    color: '#6b7280',
+    lineHeight: 20,
+    textAlign: 'center',
   },
   extensionGrid: {
     flexDirection: 'row',

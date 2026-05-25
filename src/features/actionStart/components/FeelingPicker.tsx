@@ -10,7 +10,7 @@ type FeelingPickerProps = {
 export function FeelingPicker({ onSelect }: FeelingPickerProps) {
   return (
     <View style={styles.container}>
-      <Text style={styles.question}>始めてみてどうだった？</Text>
+      <Text style={styles.question}>取り組んだあと、いかがでしたか？</Text>
       <View style={styles.row}>
         {SCALE_VALUES.map((n) => (
           <Pressable

@@ -71,7 +71,7 @@ export function NotificationSettingsSection() {
     if (next && permissionState === 'denied') {
       Alert.alert(
         '端末で通知をオンにしてください',
-        'タイマー終了の通知を受け取るには、端末の設定で Eskeri の通知を有効にする必要があります。',
+        'タイマー終了の通知を受け取るには、端末の設定で エスケリ の通知を有効にする必要があります。',
         [
           { text: 'キャンセル', style: 'cancel' },
           {
@@ -112,7 +112,7 @@ export function NotificationSettingsSection() {
     <View style={styles.section}>
       <Text style={styles.sectionLabel}>通知</Text>
       <Text style={styles.description}>
-        タイマーが終了したときに「終了」とお知らせします。
+        タイマーが終わったときに、取り組んだ内容と次のステップをお知らせします。
       </Text>
 
       <View style={styles.row}>
